@@ -1,18 +1,19 @@
 'use strict';
 
+// Categories match the spreadsheet columns. fill = Excel header colour; icon = SF Symbols-style glyph.
 const CATEGORIES = [
-  { name: 'Food', emoji: '🍜', fill: 'FFFFC000' },
-  { name: 'Entertainment', emoji: '🎬', fill: 'FF8497B0' },
-  { name: 'PayNow/Paylah', emoji: '💸', fill: 'FF92D050' },
-  { name: 'Transport', emoji: '🚇', fill: 'FF00B0F0' },
-  { name: 'Cab', emoji: '🚕', fill: 'FFFFFF00' },
-  { name: 'Phone Bill', emoji: '📱', fill: 'FFFFE699' },
-  { name: 'Clothing/Shoe', emoji: '👟', fill: 'FFA9D18E' },
-  { name: 'Others', emoji: '📦', fill: 'FFF4B183' },
+  { name: 'Food', fill: 'FFFFC000', icon: '<path d="M4 2.5v6.5a2 2 0 0 0 2 2h3a2 2 0 0 0 2-2V2.5M7.5 2.5v19M20 14.5v-12a5 5 0 0 0-5 5v5.5a1.5 1.5 0 0 0 1.5 1.5H20zm0 0v7"/>' },
+  { name: 'Entertainment', fill: 'FF8497B0', icon: '<path d="M2.5 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h15a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2h-15a2 2 0 0 0-2 2zM14 5v2.5M14 16.5V19M14 10.7v2.6"/>' },
+  { name: 'PayNow/Paylah', fill: 'FF92D050', icon: '<path d="M7.5 3.5 4 7l3.5 3.5M4 7h16M16.5 13.5 20 17l-3.5 3.5M20 17H4"/>' },
+  { name: 'Transport', fill: 'FF00B0F0', icon: '<rect x="5" y="3" width="14" height="14" rx="4"/><path d="M5 10h14M9 13.6h.01M15 13.6h.01M8.5 17l-2 3.5M15.5 17l2 3.5"/>' },
+  { name: 'Cab', fill: 'FFFFFF00', icon: '<path d="M10 2.5h4M6.8 6.5h10.4l2.1 5H4.7zM4.5 11.5h15a1.5 1.5 0 0 1 1.5 1.5v4.5H3V13a1.5 1.5 0 0 1 1.5-1.5zM5.5 17.5v2M18.5 17.5v2M7.5 14.5h.01M16.5 14.5h.01"/>' },
+  { name: 'Phone Bill', fill: 'FFFFE699', icon: '<rect x="6.5" y="2.5" width="11" height="19" rx="2.5"/><path d="M10.5 18.5h3"/>' },
+  { name: 'Clothing/Shoe', fill: 'FFA9D18E', icon: '<path d="M20.4 3.6 16 2a4 4 0 0 1-8 0L3.6 3.6a2 2 0 0 0-1.3 2.2l.6 3.4a1 1 0 0 0 1 .8H6v10a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V10h2.1a1 1 0 0 0 1-.8l.6-3.4a2 2 0 0 0-1.3-2.2z"/>' },
+  { name: 'Others', fill: 'FFF4B183', icon: '<path d="M21 8a2 2 0 0 0-1-1.7l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.7l7 4a2 2 0 0 0 2 0l7-4a2 2 0 0 0 1-1.7zM3.3 7 12 12l8.7-5M12 22V12"/>' },
 ];
 const CATEGORY_NAMES = new Set(CATEGORIES.map(c => c.name));
+const CATEGORY_INDEX = Object.fromEntries(CATEGORIES.map((c, i) => [c.name, i]));
 const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-const EMOJI = Object.fromEntries(CATEGORIES.map(c => [c.name, c.emoji]));
 const money = new Intl.NumberFormat('en-SG', { style: 'currency', currency: 'SGD' });
 const PHOTO_MAX_PX = 1600;
 
@@ -100,34 +101,32 @@ function readHidden() {
 
 const state = {
   expenses: [],
-  tab: 'list',
+  tab: 'list',                // 'list' (Expenses) or 'dash' (Dashboard)
   month: monthOf(todayISO()), // month shown on the Expenses tab
   year: thisYear(),           // year shown on the Dashboard
   dashMonth: null,            // month picked in the Dashboard chart
   catScope: 'month',          // Dashboard category breakdown: 'month' or 'year'
-  editing: null,       // expense being edited, or null for a new one
-  category: null,      // selected category in the sheet
-  draftPhoto: undefined, // undefined = unchanged, null = removed, Blob = new photo
-  sign: 1,             // 1 = spent, -1 = received (paybacks, refunds) in the sheet
-  hidden: readHidden(), // amounts masked with asterisks
-  detail: null,        // { category, key: 'YYYY' | 'YYYY-MM' } for the category detail view
+  detail: null,               // { category, key: 'YYYY' | 'YYYY-MM' } while a category page is pushed on the Dashboard
+  editing: null,              // expense being edited, or null for a new one
+  category: null,             // selected category in the sheet
+  draftPhoto: undefined,      // undefined = unchanged, null = removed, Blob = new photo
+  sign: 1,                    // 1 = spent, -1 = received (paybacks, refunds) in the sheet
+  hidden: readHidden(),       // amounts masked with asterisks
   thumbUrl: null,
 };
 
 const $ = id => document.getElementById(id);
 const els = {
-  title: $('title'), monthLabel: $('monthLabel'), prevMonth: $('prevMonth'), nextMonth: $('nextMonth'),
-  list: $('view-list'), dash: $('view-dash'), addBtn: $('addBtn'), exportBtn: $('exportBtn'),
+  navbar: $('navbar'), navTitle: $('navTitle'), backBtn: $('backBtn'), hideBtn: $('hideBtn'), menuBtn: $('menuBtn'),
+  title: $('title'), period: $('period'), monthLabel: $('monthLabel'), prevMonth: $('prevMonth'), nextMonth: $('nextMonth'),
+  list: $('view-list'), dash: $('view-dash'), detailView: $('view-detail'), addBtn: $('addBtn'),
   sheet: $('sheet'), sheetForm: $('sheetForm'), sheetTitle: $('sheetTitle'), cancelBtn: $('cancelBtn'),
-  amount: $('amount'), amountWrap: $('amountWrap'), amountError: $('amountError'),
+  amount: $('amount'), amountWrap: $('amountWrap'), amountError: $('amountError'), currency: $('currency'), signSeg: $('signSeg'),
   chips: $('chips'), categoryError: $('categoryError'), date: $('date'), note: $('note'),
   photoAdd: $('photoAdd'), photoInput: $('photoInput'), photoPreview: $('photoPreview'),
   photoThumb: $('photoThumb'), thumbBtn: $('thumbBtn'), photoRemove: $('photoRemove'), deleteBtn: $('deleteBtn'),
-  exportSheet: $('exportSheet'), exportGroup: $('exportGroup'), exportCancel: $('exportCancel'),
-  lastBackup: $('lastBackup'), backupSave: $('backupSave'), restoreInput: $('restoreInput'),
+  menu: $('menu'), menuBody: $('menuBody'), restoreInput: $('restoreInput'),
   viewer: $('viewer'), viewerImg: $('viewerImg'), viewerClose: $('viewerClose'), toast: $('toast'),
-  hideBtn: $('hideBtn'), signSeg: $('signSeg'), currency: $('currency'),
-  detail: $('detail'), detailTitle: $('detailTitle'), detailBody: $('detailBody'), detailClose: $('detailClose'),
 };
 
 function esc(s) {
@@ -139,6 +138,7 @@ function fmt(cents) { return state.hidden ? '$****' : money.format(cents / 100);
 function newestFirst(a, b) { return b.date.localeCompare(a.date) || b.createdAt - a.createdAt; }
 function oldestFirst(a, b) { return a.date.localeCompare(b.date) || a.createdAt - b.createdAt; }
 function inMonth(key) { return state.expenses.filter(e => monthOf(e.date) === key); }
+function plural(n, word) { return `${n} ${word}${n === 1 ? '' : 's'}`; }
 
 // Expenses saved under the app's earlier category list move to Others, keeping the old name as the description.
 function normalizeCategory(e) {
@@ -146,50 +146,55 @@ function normalizeCategory(e) {
   return { ...e, category: 'Others', note: e.note || e.category };
 }
 
-/* ---------- Rendering ---------- */
+/* ---------- Symbols ---------- */
 
-const ICON_EYE = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>';
-const ICON_EYE_OFF = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18M10.6 5.1A10.7 10.7 0 0 1 12 5c6.5 0 10 7 10 7a17.6 17.6 0 0 1-3.2 4.2M6.6 6.6C3.9 8.4 2 12 2 12s3.5 7 10 7c1.9 0 3.6-.6 5-1.5M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>';
-const ICON_CHEVRON = '<svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg>';
-const ICON_RECEIPT = '<svg viewBox="0 0 24 24" aria-label="Has receipt"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>';
+const svg = (body, cls = '') => `<svg viewBox="0 0 24 24" aria-hidden="true"${cls ? ` class="${cls}"` : ''}>${body}</svg>`;
+const ICON = {
+  eye: svg('<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>'),
+  eyeOff: svg('<path d="M3 3l18 18M10.6 5.1A10.7 10.7 0 0 1 12 5c6.5 0 10 7 10 7a17.6 17.6 0 0 1-3.2 4.2M6.6 6.6C3.9 8.4 2 12 2 12s3.5 7 10 7c1.9 0 3.6-.6 5-1.5M9.9 9.9a3 3 0 0 0 4.2 4.2"/>'),
+  chevron: svg('<path d="M9 5l7 7-7 7"/>', 'chev'),
+  camera: svg('<path d="M3.5 8.5a2 2 0 0 1 2-2h2l1.6-2.2h5.8l1.6 2.2h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.6"/>'),
+  tray: svg('<path d="M3 13.5 5.6 5a2 2 0 0 1 1.9-1.4h9a2 2 0 0 1 1.9 1.4l2.6 8.5v4.5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM3 13.5h5l1.5 2.5h5l1.5-2.5h5"/>'),
+  check: svg('<circle cx="12" cy="12" r="9.5"/><path d="M8 12.3l2.7 2.7L16.2 9.5"/>'),
+  alert: svg('<circle cx="12" cy="12" r="9.5"/><path d="M12 7.5v5.5M12 16.5h.01"/>'),
+  table: svg('<rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M3 14.75h18M9.5 9.5V20"/>'),
+  archive: svg('<rect x="2.5" y="3.5" width="19" height="5" rx="1.5"/><path d="M4.5 8.5v10a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-10M10 12.5h4"/>'),
+  restore: svg('<path d="M3.5 4v5.5H9"/><path d="M4 9.5a8.5 8.5 0 1 1-.5 5"/><path d="M12 8v4.5l3 2"/>'),
+};
+
+// White category symbol on the category's system colour.
+function badge(category, cls = '') {
+  const i = CATEGORY_INDEX[category] ?? CATEGORIES.length - 1;
+  return `<span class="badge k${i}${cls ? ' ' + cls : ''}" aria-hidden="true">${svg(CATEGORIES[i].icon)}</span>`;
+}
+
+/* ---------- Rendering ---------- */
 
 function render() {
   const isList = state.tab === 'list';
-  els.title.textContent = isList ? 'Expenses' : 'Dashboard';
+  const inDetail = !isList && !!state.detail;
+  const title = isList ? 'Expenses' : inDetail ? state.detail.category : 'Dashboard';
+  els.title.innerHTML = inDetail ? `${badge(title, 'lg')}<span>${esc(title)}</span>` : esc(title);
+  els.navTitle.textContent = title;
+  els.backBtn.hidden = !inDetail;
+  els.period.hidden = inDetail;
   els.monthLabel.textContent = isList ? monthLabel(state.month) : String(state.year);
   els.nextMonth.disabled = isList ? state.month >= monthOf(todayISO()) : state.year >= thisYear();
   els.prevMonth.setAttribute('aria-label', isList ? 'Previous month' : 'Previous year');
   els.nextMonth.setAttribute('aria-label', isList ? 'Next month' : 'Next year');
+  els.monthLabel.setAttribute('aria-label', isList ? 'Jump to this month' : 'Jump to this year');
   els.list.hidden = !isList;
-  els.dash.hidden = isList;
-  els.hideBtn.innerHTML = state.hidden ? ICON_EYE_OFF : ICON_EYE;
+  els.dash.hidden = isList || inDetail;
+  els.detailView.hidden = !inDetail;
+  els.hideBtn.innerHTML = state.hidden ? ICON.eyeOff : ICON.eye;
   els.hideBtn.setAttribute('aria-pressed', String(state.hidden));
   els.hideBtn.setAttribute('aria-label', state.hidden ? 'Show amounts' : 'Hide amounts');
   document.querySelectorAll('.tab').forEach(t => {
     if (t.dataset.tab === state.tab) t.setAttribute('aria-current', 'page');
     else t.removeAttribute('aria-current');
   });
-  if (isList) renderList(); else renderDashboard();
-}
-
-// The header arrows move the month on the Expenses tab and the year on the Dashboard.
-function shiftPeriod(delta) {
-  if (state.tab === 'list') state.month = shiftMonth(state.month, delta);
-  else state.year += delta;
-  render();
-}
-
-function toggleHidden() {
-  state.hidden = !state.hidden;
-  try { localStorage.setItem(HIDE_KEY, state.hidden ? '1' : '0'); } catch {}
-  render();
-  if (els.detail.open) renderDetail();
-}
-
-function resetPeriod() {
-  state.month = monthOf(todayISO());
-  state.year = thisYear();
-  render();
+  if (isList) renderList(); else if (inDetail) renderDetail(); else renderDashboard();
+  updateNavbar();
 }
 
 function heroHtml(label, cents, sub) {
@@ -200,6 +205,22 @@ function heroHtml(label, cents, sub) {
   </div>`;
 }
 
+function emptyHtml(title, message) {
+  return `<div class="empty">${ICON.tray}<h3>${esc(title)}</h3><p>${esc(message)}</p></div>`;
+}
+
+function expenseRow(e) {
+  const sub = [e.note ? esc(e.category) : '', e.cents < 0 ? 'Received' : ''].filter(Boolean).join(' · ');
+  return `<button class="row item" data-id="${esc(e.id)}">
+    ${badge(e.category)}
+    <span class="row-main">
+      <span class="row-title">${esc(e.note || e.category)}</span>
+      ${sub || e.hasPhoto ? `<span class="row-sub">${sub}${e.hasPhoto ? ICON.camera : ''}</span>` : ''}
+    </span>
+    <span class="row-amount${e.cents < 0 ? ' received' : ''}">${fmt(e.cents)}</span>
+  </button>`;
+}
+
 function dayGroupsHtml(items) {
   const days = new Map();
   for (const e of items) {
@@ -208,28 +229,19 @@ function dayGroupsHtml(items) {
   }
   let html = '';
   for (const [date, list] of days) {
-    html += `<div class="day"><div class="day-head"><span>${esc(dayLabel(date))}</span><span>${fmt(sumCents(list))}</span></div><div class="card">`;
-    for (const e of list) {
-      const sub = [e.note ? esc(e.category) : '', e.cents < 0 ? 'Received' : ''].filter(Boolean).join(' · ');
-      html += `<button class="item" data-id="${esc(e.id)}">
-        <span class="emoji" aria-hidden="true">${EMOJI[e.category] || '📦'}</span>
-        <span class="item-text"><span class="item-title">${esc(e.note || e.category)}</span>
-          ${sub || e.hasPhoto ? `<span class="item-sub">${sub}${e.hasPhoto ? ICON_RECEIPT : ''}</span>` : ''}</span>
-        <span class="item-amount${e.cents < 0 ? ' received' : ''}">${fmt(e.cents)}</span>
-      </button>`;
-    }
-    html += '</div></div>';
+    html += `<section class="group">
+      <h3 class="group-head"><span>${esc(dayLabel(date))}</span><span>${fmt(sumCents(list))}</span></h3>
+      <div class="card">${list.map(expenseRow).join('')}</div>
+    </section>`;
   }
   return html;
 }
 
 function renderList() {
   const items = inMonth(state.month).sort(newestFirst);
-  const n = items.length;
   const monthName = monthLabel(state.month, { month: 'long' });
-  const html = heroHtml(`Spent in ${monthName}`, sumCents(items), `${n} expense${n === 1 ? '' : 's'}`);
-  els.list.innerHTML = html + (n ? dayGroupsHtml(items) : `<div class="empty"><div class="empty-icon">🧾</div>
-      <strong>No expenses yet</strong>Tap + to add one for ${esc(monthName)}.</div>`);
+  els.list.innerHTML = heroHtml(`Spent in ${monthName}`, sumCents(items), plural(items.length, 'expense')) +
+    (items.length ? dayGroupsHtml(items) : emptyHtml('No Expenses', `Tap + to add one for ${monthName}.`));
 }
 
 // Net per category (money received reduces it). Spending categories get a bar; net-received ones are listed last.
@@ -237,20 +249,22 @@ function categoryRows(items) {
   const byCat = new Map();
   for (const e of items) byCat.set(e.category, (byCat.get(e.category) || 0) + e.cents);
   const rows = [...byCat].filter(([, c]) => c !== 0).sort((a, b) => b[1] - a[1]);
-  if (!rows.length) return '<p class="dash-empty">Nothing spent yet</p>';
+  if (!rows.length) return '<p class="inline-empty">Nothing spent yet</p>';
   const spent = rows.reduce((n, [, c]) => n + Math.max(c, 0), 0);
   const max = Math.max(rows[0][1], 1);
   return rows.map(([cat, cents]) => {
     const pct = cents <= 0 ? '' : cents / spent < 0.005 ? '<1%' : `${Math.round((cents / spent) * 100)}%`;
-    return `<button class="cat-row" data-cat="${esc(cat)}">
-      <span class="cat-line">
-        <span aria-hidden="true">${EMOJI[cat] || '📦'}</span>
-        <span class="cat-name">${esc(cat)}</span>
-        <span class="cat-pct">${pct}</span>
-        <span class="cat-amount${cents < 0 ? ' received' : ''}">${fmt(cents)}</span>
-        ${ICON_CHEVRON}
+    return `<button class="row cat-row" data-cat="${esc(cat)}">
+      ${badge(cat)}
+      <span class="row-main">
+        <span class="row-line">
+          <span class="row-title">${esc(cat)}</span>
+          <span class="row-meta">${pct}</span>
+          <span class="row-amount${cents < 0 ? ' received' : ''}">${fmt(cents)}</span>
+        </span>
+        ${cents > 0 ? `<span class="meter"><span style="width:${(cents / max) * 100}%"></span></span>` : ''}
       </span>
-      ${cents > 0 ? `<span class="bar-track"><span class="bar" style="width:${(cents / max) * 100}%"></span></span>` : ''}
+      ${ICON.chevron}
     </button>`;
   }).join('');
 }
@@ -267,8 +281,8 @@ function renderDashboard() {
   if (!state.dashMonth || !state.dashMonth.startsWith(`${year}-`)) state.dashMonth = isThisYear ? now : `${year}-12`;
 
   const sel = state.dashMonth;
-  const selName = MONTH_SHORT[Number(sel.slice(5)) - 1];
-  const selTotal = totals[Number(sel.slice(5)) - 1];
+  const selIndex = Number(sel.slice(5)) - 1;
+  const selTotal = totals[selIndex];
   const prev = shiftMonth(sel, -1);
   const prevTotal = sumCents(inMonth(prev));
   let change = '';
@@ -281,45 +295,33 @@ function renderDashboard() {
   let html = heroHtml(`Spent in ${year}`, total, total ? `Avg ${fmt(Math.round(total / monthsSoFar))} a month` : 'No expenses yet');
 
   const peak = Math.max(...totals, 1); // a month can't show below zero, even if more came in than went out
-  html += `<div class="dash-card">
-    <div class="dash-head"><span>${esc(monthLabel(sel, { month: 'long' }))}</span><strong>${fmt(selTotal)}</strong></div>
-    <div class="dash-sub">${change ? esc(change) : '&nbsp;'}</div>
+  html += `<section class="card chart-card">
+    <div class="chart-head"><span class="chart-title">${esc(monthLabel(sel, { month: 'long' }))}</span><span class="chart-value">${fmt(selTotal)}</span></div>
+    <div class="chart-sub">${change ? esc(change) : '&nbsp;'}</div>
     <div class="months">${months.map((m, i) => `<button class="month-col" data-month="${m}" aria-label="${esc(`${monthLabel(m)}: ${fmt(totals[i])}`)}"${m === sel ? ' aria-current="true"' : ''}>
         <span class="month-track"><span class="month-bar" style="height:${totals[i] > 0 ? Math.max((totals[i] / peak) * 100, 3) : 0}%"></span></span>
         <span class="month-name">${MONTH_SHORT[i]}</span>
       </button>`).join('')}</div>
-  </div>`;
+  </section>`;
 
   const byYear = state.catScope === 'year';
-  html += `<div class="dash-row">
-    <h2 class="section-title">By category</h2>
+  html += `<div class="section-row">
+    <h2 class="section-title">By Category</h2>
     <div class="seg" role="group" aria-label="Show categories for">
-      <button data-scope="month" aria-pressed="${!byYear}">${selName}</button>
+      <button data-scope="month" aria-pressed="${!byYear}">${MONTH_SHORT[selIndex]}</button>
       <button data-scope="year" aria-pressed="${byYear}">${year}</button>
     </div>
   </div>
-  <div class="summary-card">${categoryRows(byYear ? yearItems : inMonth(sel))}</div>`;
+  <div class="card">${categoryRows(byYear ? yearItems : inMonth(sel))}</div>`;
   els.dash.innerHTML = html;
 }
 
-/* ---------- Category detail (from the Dashboard) ---------- */
-
-function openDetail(category) {
-  state.detail = { category, key: state.catScope === 'year' ? String(state.year) : state.dashMonth };
-  renderDetail();
-  document.body.classList.add('locked');
-  els.detail.showModal();
-  els.detailBody.scrollTop = 0;
-}
-
+// Pushed page for one category: where the money went, then every expense in it.
 function renderDetail() {
   const { category, key } = state.detail;
   const items = state.expenses.filter(e => e.category === category && e.date.startsWith(`${key}-`)).sort(newestFirst);
-  const n = items.length;
-  els.detailTitle.textContent = `${EMOJI[category] || '📦'} ${category}`;
-  let html = heroHtml(key.length === 4 ? key : monthLabel(key), sumCents(items), `${n} expense${n === 1 ? '' : 's'}`);
+  let html = heroHtml(key.length === 4 ? key : monthLabel(key), sumCents(items), plural(items.length, 'expense'));
 
-  // Where it went: one row per description (e.g. "Economy rice 12×"), biggest first.
   const places = new Map();
   for (const e of items) {
     const name = e.note || category;
@@ -335,17 +337,94 @@ function renderDetail() {
     const shown = rest.length
       ? [...ranked.slice(0, 10), { name: `${rest.length} more`, cents: sumCents(rest), count: rest.reduce((c, p) => c + p.count, 0) }]
       : ranked;
-    html += '<h2 class="section-title">Where it went</h2><div class="summary-card">' + shown.map(p => `<div class="place-row">
-        <span class="place-name">${esc(p.name)}</span>
-        <span class="place-count">${p.count}×</span>
-        <span class="place-amount${p.cents < 0 ? ' received' : ''}">${fmt(p.cents)}</span>
-      </div>`).join('') + '</div>';
+    html += `<div class="section-row"><h2 class="section-title">Where It Went</h2></div>
+      <div class="card group">${shown.map(p => `<div class="row place-row">
+        <span class="row-title">${esc(p.name)}</span>
+        <span class="row-meta">${p.count}×</span>
+        <span class="row-amount${p.cents < 0 ? ' received' : ''}">${fmt(p.cents)}</span>
+      </div>`).join('')}</div>`;
   }
-  html += n ? '<h2 class="section-title">All expenses</h2>' + dayGroupsHtml(items) : '<p class="dash-empty">Nothing here yet</p>';
-  els.detailBody.innerHTML = html;
+  html += items.length
+    ? `<div class="section-row"><h2 class="section-title">All Expenses</h2></div>${dayGroupsHtml(items)}`
+    : emptyHtml('Nothing Here', 'No expenses in this category for this period.');
+  els.detailView.innerHTML = html;
+}
+
+/* ---------- Navigation ---------- */
+
+function animateView(el, cls) {
+  el.classList.remove('push', 'pop');
+  void el.offsetWidth;
+  if (cls) el.classList.add(cls);
+}
+
+// Tabs keep their own place; tapping the current tab again goes back to its top level.
+function showTab(tab) {
+  if (tab === state.tab && tab === 'dash' && state.detail) { closeDetail(); return; }
+  state.tab = tab;
+  render();
+  animateView(tab === 'list' ? els.list : state.detail ? els.detailView : els.dash);
+  window.scrollTo(0, 0);
+}
+
+function openDetail(category) {
+  state.detail = { category, key: state.catScope === 'year' ? String(state.year) : state.dashMonth };
+  render();
+  animateView(els.detailView, 'push');
+  window.scrollTo(0, 0);
+}
+
+function closeDetail() {
+  state.detail = null;
+  render();
+  animateView(els.dash, 'pop');
+  window.scrollTo(0, 0);
+}
+
+// The header arrows move the month on the Expenses tab and the year on the Dashboard.
+function shiftPeriod(delta) {
+  if (state.tab === 'list') state.month = shiftMonth(state.month, delta);
+  else state.year += delta;
+  render();
+}
+
+function resetPeriod() {
+  state.month = monthOf(todayISO());
+  state.year = thisYear();
+  render();
+}
+
+function toggleHidden() {
+  state.hidden = !state.hidden;
+  try { localStorage.setItem(HIDE_KEY, state.hidden ? '1' : '0'); } catch {}
+  render();
+}
+
+// Scroll edge effect + inline title once the large title has scrolled under the bar.
+function updateNavbar() {
+  const y = window.scrollY;
+  const titleBottom = els.title.offsetTop + els.title.offsetHeight - els.navbar.offsetHeight;
+  els.navbar.classList.toggle('scrolled', y > 4);
+  els.navbar.classList.toggle('show-title', y > titleBottom);
 }
 
 /* ---------- Add / edit sheet ---------- */
+
+// Plays the dialog's closing animation, then closes it (straight away with Reduce Motion).
+function closeDialog(dlg) {
+  if (!dlg.open || dlg.classList.contains('closing')) return;
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) { dlg.close(); return; }
+  const finish = () => {
+    clearTimeout(timer);
+    dlg.removeEventListener('animationend', onEnd);
+    dlg.classList.remove('closing');
+    if (dlg.open) dlg.close();
+  };
+  const onEnd = e => { if (e.target === dlg) finish(); };
+  const timer = setTimeout(finish, 450);
+  dlg.addEventListener('animationend', onEnd);
+  dlg.classList.add('closing');
+}
 
 function setSign(sign) {
   state.sign = sign;
@@ -356,8 +435,9 @@ function setSign(sign) {
 
 function renderChips() {
   els.chips.innerHTML = CATEGORIES.map(c =>
-    `<button type="button" class="chip" role="radio" data-cat="${esc(c.name)}" aria-checked="${c.name === state.category}">
-      <span class="chip-emoji" aria-hidden="true">${c.emoji}</span>${esc(c.name)}</button>`
+    `<button type="button" class="cat" role="radio" data-cat="${esc(c.name)}" aria-checked="${c.name === state.category}">
+      ${badge(c.name)}<span class="cat-name">${esc(c.name)}</span>
+    </button>`
   ).join('');
 }
 
@@ -373,7 +453,7 @@ function openSheet(expense) {
   state.editing = expense || null;
   state.category = expense ? expense.category : null;
   state.draftPhoto = undefined;
-  els.sheetTitle.textContent = expense ? 'Edit expense' : 'New expense';
+  els.sheetTitle.textContent = expense ? 'Edit Expense' : 'New Expense';
   els.amount.value = expense ? (Math.abs(expense.cents) / 100).toFixed(2) : '';
   setSign(expense && expense.cents < 0 ? -1 : 1);
   sizeAmount();
@@ -383,7 +463,7 @@ function openSheet(expense) {
   els.categoryError.hidden = true;
   els.deleteBtn.hidden = !expense;
   els.deleteBtn.classList.remove('confirm');
-  els.deleteBtn.textContent = 'Delete expense';
+  els.deleteBtn.textContent = 'Delete Expense';
   renderChips();
   setThumb(null);
   if (expense && expense.hasPhoto) {
@@ -396,7 +476,7 @@ function openSheet(expense) {
 }
 
 function closeSheet() {
-  els.sheet.close();
+  closeDialog(els.sheet);
 }
 
 // Grow the big amount field with its contents so the "$" stays snug against the number.
@@ -446,15 +526,14 @@ async function saveSheet() {
     await db.put('expenses', expense);
   } catch (err) {
     console.error(err);
-    toast('Could not save — storage error');
+    toast('Could not save — storage error', 'error');
     return;
   }
   const i = state.expenses.findIndex(e => e.id === expense.id);
   if (i >= 0) state.expenses[i] = expense; else state.expenses.push(expense);
-  state.month = monthOf(expense.date);
+  if (state.tab === 'list') state.month = monthOf(expense.date);
   closeSheet();
   render();
-  if (els.detail.open) renderDetail();
   toast(isEdit ? 'Updated' : 'Saved');
 }
 
@@ -463,9 +542,9 @@ async function deleteExpense() {
   const btn = els.deleteBtn;
   if (!btn.classList.contains('confirm')) {
     btn.classList.add('confirm');
-    btn.textContent = 'Tap again to delete';
+    btn.textContent = 'Tap Again to Delete';
     clearTimeout(deleteTimer);
-    deleteTimer = setTimeout(() => { btn.classList.remove('confirm'); btn.textContent = 'Delete expense'; }, 3000);
+    deleteTimer = setTimeout(() => { btn.classList.remove('confirm'); btn.textContent = 'Delete Expense'; }, 3000);
     return;
   }
   clearTimeout(deleteTimer);
@@ -475,13 +554,12 @@ async function deleteExpense() {
     await db.del('photos', id);
   } catch (err) {
     console.error(err);
-    toast('Could not delete — storage error');
+    toast('Could not delete — storage error', 'error');
     return;
   }
   state.expenses = state.expenses.filter(e => e.id !== id);
   closeSheet();
   render();
-  if (els.detail.open) renderDetail();
   toast('Deleted');
 }
 
@@ -636,24 +714,6 @@ function buildYearWorkbook(year) {
   return XLSXWriter.build([summarySheet(year), ...MONTH_SHORT.map((_, i) => monthSheet(year, i))]);
 }
 
-function openExportSheet() {
-  const counts = new Map();
-  for (const e of state.expenses) {
-    const y = e.date.slice(0, 4);
-    counts.set(y, (counts.get(y) || 0) + 1);
-  }
-  const years = [...counts.keys()].sort().reverse();
-  els.exportGroup.innerHTML = '<div class="action-title">Export to Excel</div>' + (years.length
-    ? years.map(y => `<button type="button" data-export="${y}">${y} (${counts.get(y)} expense${counts.get(y) === 1 ? '' : 's'})</button>`).join('')
-    : '<button type="button" disabled>No expenses yet</button>');
-  resetBackupButton();
-  const last = readLastBackup();
-  els.lastBackup.textContent = last
-    ? `Last saved ${new Date(last).toLocaleDateString('en-SG', { day: 'numeric', month: 'short', year: 'numeric' })}`
-    : 'Not backed up yet';
-  els.exportSheet.showModal();
-}
-
 function downloadFile(file) {
   const url = URL.createObjectURL(file);
   const a = document.createElement('a');
@@ -699,12 +759,6 @@ function readLastBackup() {
   try { return localStorage.getItem(LAST_BACKUP_KEY); } catch { return null; }
 }
 
-function resetBackupButton() {
-  preparedBackup = null;
-  els.backupSave.disabled = false;
-  els.backupSave.textContent = 'Save backup file';
-}
-
 async function buildBackup() {
   const files = [];
   const entries = [];
@@ -724,36 +778,6 @@ async function buildBackup() {
   return new File([Zip.zip(files)], `Expenses-backup-${todayISO()}.zip`, { type: 'application/zip' });
 }
 
-async function saveBackup() {
-  const btn = els.backupSave;
-  if (!state.expenses.length) { toast('Nothing to back up yet'); return; }
-  if (!preparedBackup) {
-    btn.disabled = true;
-    btn.textContent = 'Preparing backup…';
-    try {
-      preparedBackup = await buildBackup();
-    } catch (err) {
-      console.error(err);
-      resetBackupButton();
-      toast('Could not create backup');
-      return;
-    }
-    if (!els.exportSheet.open) { resetBackupButton(); return; } // cancelled while preparing
-  }
-  const result = await saveFile(preparedBackup);
-  if (result === 'blocked') {
-    // Gathering photos took long enough that iOS needs another tap to open the Share sheet.
-    btn.disabled = false;
-    btn.textContent = 'Backup ready · tap to save';
-    return;
-  }
-  els.exportSheet.close();
-  if (result === 'done') {
-    try { localStorage.setItem(LAST_BACKUP_KEY, new Date().toISOString()); } catch {}
-    toast('Backup saved');
-  }
-}
-
 function isBackupEntry(x) {
   return x && typeof x.id === 'string' && x.id &&
     typeof x.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(x.date) &&
@@ -770,7 +794,7 @@ async function restoreBackup(file) {
     if (manifest.kind !== BACKUP_KIND || !Array.isArray(manifest.expenses)) throw new Error('Not an Expenses backup');
   } catch (err) {
     console.error(err);
-    toast('That file isn’t an Expenses backup');
+    toast('That file isn’t an Expenses backup', 'error');
     return;
   }
   const valid = manifest.expenses.filter(isBackupEntry);
@@ -800,7 +824,7 @@ async function restoreBackup(file) {
     await db.addAll(records);
   } catch (err) {
     console.error(err);
-    toast('Could not restore — storage error');
+    toast('Could not restore — storage error', 'error');
     return;
   }
   state.expenses.push(...records.map(r => r.expense));
@@ -808,47 +832,114 @@ async function restoreBackup(file) {
   toast(`Restored ${records.length} expense${records.length === 1 ? '' : 's'}`);
 }
 
+/* ---------- Menu: export and backup ---------- */
+
+function openMenu() {
+  const counts = new Map();
+  for (const e of state.expenses) {
+    const y = e.date.slice(0, 4);
+    counts.set(y, (counts.get(y) || 0) + 1);
+  }
+  const years = [...counts.keys()].sort().reverse();
+  const last = readLastBackup();
+  const lastText = last
+    ? `Last saved ${new Date(last).toLocaleDateString('en-SG', { day: 'numeric', month: 'short', year: 'numeric' })}`
+    : 'Not backed up yet';
+  els.menuBody.innerHTML =
+    '<div class="menu-label">Export to Excel</div>' +
+    (years.length
+      ? years.map(y => `<button class="menu-item" role="menuitem" data-export="${y}">
+          <span class="mi-text">Export ${y}<span class="mi-sub">${plural(counts.get(y), 'expense')}</span></span>${ICON.table}
+        </button>`).join('')
+      : '<div class="menu-item" aria-disabled="true"><span class="mi-text">No expenses yet</span></div>') +
+    `<div class="menu-sep" role="separator"></div>
+    <div class="menu-label">Backup, including receipt photos</div>
+    <button class="menu-item" role="menuitem" id="backupSave">
+      <span class="mi-text"><span id="backupLabel">Save Backup</span><span class="mi-sub">${esc(lastText)}</span></span>${ICON.archive}
+    </button>
+    <label class="menu-item" role="menuitem" for="restoreInput">
+      <span class="mi-text">Restore from Backup<span class="mi-sub">Adds anything that’s missing</span></span>${ICON.restore}
+    </label>`;
+  preparedBackup = null;
+  els.menu.showModal();
+}
+
+function setBackupLabel(text, busy) {
+  const btn = $('backupSave');
+  if (!btn) return;
+  $('backupLabel').textContent = text;
+  btn.setAttribute('aria-disabled', String(!!busy));
+}
+
+async function saveBackup() {
+  if (!state.expenses.length) { toast('Nothing to back up yet', 'error'); return; }
+  if ($('backupSave').getAttribute('aria-disabled') === 'true') return;
+  if (!preparedBackup) {
+    setBackupLabel('Preparing Backup…', true);
+    try {
+      preparedBackup = await buildBackup();
+    } catch (err) {
+      console.error(err);
+      closeDialog(els.menu);
+      toast('Could not create backup', 'error');
+      return;
+    }
+    if (!els.menu.open) { preparedBackup = null; return; } // dismissed while preparing
+  }
+  const result = await saveFile(preparedBackup);
+  if (result === 'blocked') {
+    // Gathering photos took long enough that iOS needs another tap to open the Share sheet.
+    setBackupLabel('Backup Ready — Tap to Save', false);
+    return;
+  }
+  preparedBackup = null;
+  closeDialog(els.menu);
+  if (result === 'done') {
+    try { localStorage.setItem(LAST_BACKUP_KEY, new Date().toISOString()); } catch {}
+    toast('Backup saved');
+  }
+}
+
 /* ---------- Toast ---------- */
 
 let toastTimer = 0;
-function toast(msg) {
-  els.toast.textContent = msg;
+function toast(msg, kind = 'ok') {
+  els.toast.innerHTML = `${kind === 'error' ? ICON.alert : ICON.check}<span>${esc(msg)}</span>`;
+  els.toast.classList.toggle('error', kind === 'error');
   els.toast.classList.add('show');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => els.toast.classList.remove('show'), 1800);
+  toastTimer = setTimeout(() => els.toast.classList.remove('show'), 2000);
 }
 
 /* ---------- Events ---------- */
 
 function bind() {
   els.addBtn.addEventListener('click', () => openSheet(null));
-  els.exportBtn.addEventListener('click', openExportSheet);
+  els.menuBtn.addEventListener('click', openMenu);
   els.hideBtn.addEventListener('click', toggleHidden);
-  els.signSeg.addEventListener('click', e => {
-    const btn = e.target.closest('[data-sign]');
-    if (btn) setSign(Number(btn.dataset.sign));
-  });
-  els.detailClose.addEventListener('click', () => els.detail.close());
-  els.detail.addEventListener('close', () => { if (!els.sheet.open) document.body.classList.remove('locked'); });
-  els.detailBody.addEventListener('click', e => {
-    const item = e.target.closest('.item');
-    if (item) openSheet(state.expenses.find(x => x.id === item.dataset.id));
-  });
+  els.backBtn.addEventListener('click', closeDetail);
   els.prevMonth.addEventListener('click', () => shiftPeriod(-1));
   els.nextMonth.addEventListener('click', () => shiftPeriod(1));
   els.monthLabel.addEventListener('click', resetPeriod);
+  document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => showTab(t.dataset.tab)));
 
-  document.querySelectorAll('.tab').forEach(t =>
-    t.addEventListener('click', () => { state.tab = t.dataset.tab; render(); window.scrollTo(0, 0); }));
+  let ticking = false;
+  window.addEventListener('scroll', () => {
+    if (ticking) return;
+    ticking = true;
+    requestAnimationFrame(() => { ticking = false; updateNavbar(); });
+  }, { passive: true });
 
-  els.list.addEventListener('click', e => {
+  const openItem = e => {
     const item = e.target.closest('.item');
     if (item) openSheet(state.expenses.find(x => x.id === item.dataset.id));
-  });
+  };
+  els.list.addEventListener('click', openItem);
+  els.detailView.addEventListener('click', openItem);
   els.dash.addEventListener('click', e => {
+    const cat = e.target.closest('.cat-row');
     const col = e.target.closest('.month-col');
     const scope = e.target.closest('[data-scope]');
-    const cat = e.target.closest('.cat-row');
     if (cat) { openDetail(cat.dataset.cat); return; }
     if (col) state.dashMonth = col.dataset.month;
     else if (scope) state.catScope = scope.dataset.scope;
@@ -856,12 +947,16 @@ function bind() {
     render();
   });
 
+  els.signSeg.addEventListener('click', e => {
+    const btn = e.target.closest('[data-sign]');
+    if (btn) setSign(Number(btn.dataset.sign));
+  });
   els.chips.addEventListener('click', e => {
-    const chip = e.target.closest('.chip');
+    const chip = e.target.closest('.cat');
     if (!chip) return;
     state.category = chip.dataset.cat;
     els.categoryError.hidden = true;
-    els.chips.querySelectorAll('.chip').forEach(c => c.setAttribute('aria-checked', String(c === chip)));
+    els.chips.querySelectorAll('.cat').forEach(c => c.setAttribute('aria-checked', String(c === chip)));
     if (document.activeElement === els.amount) els.amount.blur();
   });
   els.amount.addEventListener('input', () => { els.amountError.hidden = true; sizeAmount(); });
@@ -872,7 +967,7 @@ function bind() {
   els.cancelBtn.addEventListener('click', closeSheet);
   els.deleteBtn.addEventListener('click', deleteExpense);
   els.sheet.addEventListener('close', () => {
-    if (!els.detail.open) document.body.classList.remove('locked');
+    document.body.classList.remove('locked');
     setThumb(null);
     els.photoInput.value = '';
   });
@@ -893,18 +988,16 @@ function bind() {
   els.viewerClose.addEventListener('click', () => els.viewer.close());
   els.viewer.addEventListener('click', e => { if (e.target === els.viewer || e.target === els.viewerImg) els.viewer.close(); });
 
-  els.exportSheet.addEventListener('click', e => {
-    const btn = e.target.closest('[data-export]');
-    if (btn) { els.exportSheet.close(); exportExcel(btn.dataset.export); return; }
-    if (e.target === els.exportSheet) els.exportSheet.close(); // tap on backdrop
+  els.menu.addEventListener('click', e => {
+    const exp = e.target.closest('[data-export]');
+    if (exp) { closeDialog(els.menu); exportExcel(exp.dataset.export); return; }
+    if (e.target.closest('#backupSave')) { saveBackup(); return; }
+    if (e.target === els.menu) closeDialog(els.menu); // tap outside the menu
   });
-  els.exportCancel.addEventListener('click', () => els.exportSheet.close());
-  els.exportSheet.addEventListener('close', resetBackupButton);
-  els.backupSave.addEventListener('click', saveBackup);
   els.restoreInput.addEventListener('change', () => {
     const file = els.restoreInput.files[0];
     els.restoreInput.value = '';
-    els.exportSheet.close();
+    closeDialog(els.menu);
     if (file) restoreBackup(file);
   });
 }
@@ -920,7 +1013,7 @@ async function start() {
     await Promise.all(state.expenses.filter((e, i) => e !== saved[i]).map(e => db.put('expenses', e)));
   } catch (err) {
     console.error(err);
-    toast('Storage unavailable — entries won’t be saved');
+    toast('Storage unavailable — entries won’t be saved', 'error');
   }
   render();
   if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});

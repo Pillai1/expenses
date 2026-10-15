@@ -10,6 +10,9 @@ A personal expense tracker for iPhone, installed as a Home Screen web app. Amoun
 - Dashboard: total for the year, a Jan–Dec chart, and spending by category for a month or the whole year.
   Tap a category to see where the money went (e.g. "Uncle Penyet 6×") and every expense in it
 - Eye button (top right) hides every amount as `$****`; the app remembers your choice
+- Designed after Apple's Human Interface Guidelines for iOS: Liquid Glass only on the floating controls
+  (tab bar, add button, toolbar buttons, menu), large titles, inset grouped lists, system colours,
+  Dark Mode, and support for Reduce Transparency, Increase Contrast and Reduce Motion
 - Export a year to Excel (`2026_Expenses.xlsx`) in the same layout as the original spreadsheet: a Summary sheet
   plus one sheet per month with a row per day. Several items on one day become `=5.3+10.2`, one description per line
 - Back up everything, receipt photos included, to one file, and restore it later
