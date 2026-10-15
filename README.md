@@ -3,9 +3,11 @@
 A personal expense tracker for iPhone, installed as a Home Screen web app. Amounts are in SGD.
 
 - Add an expense with amount, category, date, description and an optional receipt photo
+- Categories match the yearly spreadsheet: Food, Entertainment, PayNow/Paylah, Transport, Cab, Phone Bill, Clothing/Shoe, Others
 - Edit or delete any expense by tapping it
-- Monthly summary: totals by category and the last 6 months
-- Export one month, or everything, to an Excel `.xlsx` file through the iOS Share sheet
+- Dashboard: total for the year, a Jan–Dec chart, and spending by category for a month or the whole year
+- Export a year to Excel (`2026_Expenses.xlsx`) in the same layout as the original spreadsheet: a Summary sheet
+  plus one sheet per month with a row per day. Several items on one day become `=5.3+10.2`, one description per line
 - Back up everything, receipt photos included, to one file, and restore it later
 - Works offline. Data is saved **only on your iPhone** and is never uploaded
 
@@ -21,7 +23,8 @@ The files need to be hosted on an `https://` address once. GitHub Pages is free:
 4. On the iPhone, open that address in **Safari**. Tap **Share → Add to Home Screen → Add**.
 5. Always open the app from the **Home Screen icon**. The icon keeps its own storage, separate from Safari tabs.
 
-The repository only holds the app's code. Your expenses never leave the phone, so anyone who opens
+The repository only holds the app's code. Spreadsheets (`.xlsx`) and backups (`.zip`) in this folder are
+excluded by `.gitignore`, so they are never uploaded. Your expenses never leave the phone, so anyone who opens
 the address just sees an empty app.
 
 ## Keep your data safe

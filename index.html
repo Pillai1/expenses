@@ -36,7 +36,7 @@
 
   <main>
     <section id="view-list"></section>
-    <section id="view-summary" hidden></section>
+    <section id="view-dash" hidden></section>
   </main>
 
   <nav class="tabbar">
@@ -47,9 +47,9 @@
     <button class="add-btn" id="addBtn" aria-label="Add expense">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
     </button>
-    <button class="tab" data-tab="summary">
+    <button class="tab" data-tab="dash">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20V12M12 20V5M19 20v-9"/></svg>
-      <span>Summary</span>
+      <span>Dashboard</span>
     </button>
   </nav>
 
@@ -100,11 +100,7 @@
   </dialog>
 
   <dialog id="exportSheet" class="action-sheet" aria-label="Export and backup">
-    <div class="action-group">
-      <div class="action-title">Export to Excel</div>
-      <button type="button" data-export="month" id="exportMonth"></button>
-      <button type="button" data-export="all" id="exportAll"></button>
-    </div>
+    <div class="action-group" id="exportGroup"></div>
     <div class="action-group">
       <div class="action-title">Backup, including receipt photos<br><span id="lastBackup"></span></div>
       <button type="button" id="backupSave">Save backup file</button>

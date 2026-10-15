@@ -1,1 +1,5 @@
 .DS_Store
+# Personal spreadsheets and backups never go to the public repo
+*.xlsx
+*.zip
+.gstack/

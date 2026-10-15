@@ -1,20 +1,19 @@
 'use strict';
 
 const CATEGORIES = [
-  { name: 'Food', emoji: '🍜' },
-  { name: 'Groceries', emoji: '🛒' },
-  { name: 'Transport', emoji: '🚇' },
-  { name: 'Shopping', emoji: '🛍️' },
-  { name: 'Bills', emoji: '🧾' },
-  { name: 'Entertainment', emoji: '🎬' },
-  { name: 'Health', emoji: '💊' },
-  { name: 'Travel', emoji: '✈️' },
-  { name: 'Others', emoji: '📦' },
+  { name: 'Food', emoji: '🍜', fill: 'FFFFC000' },
+  { name: 'Entertainment', emoji: '🎬', fill: 'FF8497B0' },
+  { name: 'PayNow/Paylah', emoji: '💸', fill: 'FF92D050' },
+  { name: 'Transport', emoji: '🚇', fill: 'FF00B0F0' },
+  { name: 'Cab', emoji: '🚕', fill: 'FFFFFF00' },
+  { name: 'Phone Bill', emoji: '📱', fill: 'FFFFE699' },
+  { name: 'Clothing/Shoe', emoji: '👟', fill: 'FFA9D18E' },
+  { name: 'Others', emoji: '📦', fill: 'FFF4B183' },
 ];
+const CATEGORY_NAMES = new Set(CATEGORIES.map(c => c.name));
+const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const EMOJI = Object.fromEntries(CATEGORIES.map(c => [c.name, c.emoji]));
 const money = new Intl.NumberFormat('en-SG', { style: 'currency', currency: 'SGD' });
-const moneyWhole = new Intl.NumberFormat('en-SG', { style: 'currency', currency: 'SGD', maximumFractionDigits: 0 });
-const moneyCompact = new Intl.NumberFormat('en-SG', { style: 'currency', currency: 'SGD', notation: 'compact', maximumFractionDigits: 1 });
 const PHOTO_MAX_PX = 1600;
 
 /* ---------- Dates ---------- */
@@ -22,6 +21,7 @@ const PHOTO_MAX_PX = 1600;
 function pad(n) { return String(n).padStart(2, '0'); }
 function toISO(d) { return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; }
 function todayISO() { return toISO(new Date()); }
+function thisYear() { return new Date().getFullYear(); }
 function parseISO(iso) { const [y, m, d] = iso.split('-').map(Number); return new Date(y, m - 1, d); }
 function monthOf(iso) { return iso.slice(0, 7); }
 function shiftMonth(key, delta) {
@@ -96,7 +96,10 @@ const db = {
 const state = {
   expenses: [],
   tab: 'list',
-  month: monthOf(todayISO()),
+  month: monthOf(todayISO()), // month shown on the Expenses tab
+  year: thisYear(),           // year shown on the Dashboard
+  dashMonth: null,            // month picked in the Dashboard chart
+  catScope: 'month',          // Dashboard category breakdown: 'month' or 'year'
   editing: null,       // expense being edited, or null for a new one
   category: null,      // selected category in the sheet
   draftPhoto: undefined, // undefined = unchanged, null = removed, Blob = new photo
@@ -106,13 +109,13 @@ const state = {
 const $ = id => document.getElementById(id);
 const els = {
   title: $('title'), monthLabel: $('monthLabel'), prevMonth: $('prevMonth'), nextMonth: $('nextMonth'),
-  list: $('view-list'), summary: $('view-summary'), addBtn: $('addBtn'), exportBtn: $('exportBtn'),
+  list: $('view-list'), dash: $('view-dash'), addBtn: $('addBtn'), exportBtn: $('exportBtn'),
   sheet: $('sheet'), sheetForm: $('sheetForm'), sheetTitle: $('sheetTitle'), cancelBtn: $('cancelBtn'),
   amount: $('amount'), amountWrap: $('amountWrap'), amountError: $('amountError'),
   chips: $('chips'), categoryError: $('categoryError'), date: $('date'), note: $('note'),
   photoAdd: $('photoAdd'), photoInput: $('photoInput'), photoPreview: $('photoPreview'),
   photoThumb: $('photoThumb'), thumbBtn: $('thumbBtn'), photoRemove: $('photoRemove'), deleteBtn: $('deleteBtn'),
-  exportSheet: $('exportSheet'), exportMonth: $('exportMonth'), exportAll: $('exportAll'), exportCancel: $('exportCancel'),
+  exportSheet: $('exportSheet'), exportGroup: $('exportGroup'), exportCancel: $('exportCancel'),
   lastBackup: $('lastBackup'), backupSave: $('backupSave'), restoreInput: $('restoreInput'),
   viewer: $('viewer'), viewerImg: $('viewerImg'), viewerClose: $('viewerClose'), toast: $('toast'),
 };
@@ -122,10 +125,15 @@ function esc(s) {
 }
 function sumCents(list) { return list.reduce((n, e) => n + e.cents, 0); }
 function fmt(cents) { return money.format(cents / 100); }
-function fmtShort(cents) { return (cents >= 1000000 ? moneyCompact : moneyWhole).format(cents / 100); }
 function newestFirst(a, b) { return b.date.localeCompare(a.date) || b.createdAt - a.createdAt; }
 function oldestFirst(a, b) { return a.date.localeCompare(b.date) || a.createdAt - b.createdAt; }
 function inMonth(key) { return state.expenses.filter(e => monthOf(e.date) === key); }
+
+// Expenses saved under the app's earlier category list move to Others, keeping the old name as the description.
+function normalizeCategory(e) {
+  if (CATEGORY_NAMES.has(e.category)) return e;
+  return { ...e, category: 'Others', note: e.note || e.category };
+}
 
 /* ---------- Rendering ---------- */
 
@@ -133,32 +141,49 @@ const ICON_RECEIPT = '<svg viewBox="0 0 24 24" aria-label="Has receipt"><path d=
 
 function render() {
   const isList = state.tab === 'list';
-  els.title.textContent = isList ? 'Expenses' : 'Summary';
-  els.monthLabel.textContent = monthLabel(state.month);
-  els.nextMonth.disabled = state.month >= monthOf(todayISO());
+  els.title.textContent = isList ? 'Expenses' : 'Dashboard';
+  els.monthLabel.textContent = isList ? monthLabel(state.month) : String(state.year);
+  els.nextMonth.disabled = isList ? state.month >= monthOf(todayISO()) : state.year >= thisYear();
+  els.prevMonth.setAttribute('aria-label', isList ? 'Previous month' : 'Previous year');
+  els.nextMonth.setAttribute('aria-label', isList ? 'Next month' : 'Next year');
   els.list.hidden = !isList;
-  els.summary.hidden = isList;
+  els.dash.hidden = isList;
   document.querySelectorAll('.tab').forEach(t => {
     if (t.dataset.tab === state.tab) t.setAttribute('aria-current', 'page');
     else t.removeAttribute('aria-current');
   });
-  if (isList) renderList(); else renderSummary();
+  if (isList) renderList(); else renderDashboard();
 }
 
-function heroHtml(items, extra = '') {
-  const n = items.length;
+// The header arrows move the month on the Expenses tab and the year on the Dashboard.
+function shiftPeriod(delta) {
+  if (state.tab === 'list') state.month = shiftMonth(state.month, delta);
+  else state.year += delta;
+  render();
+}
+
+function resetPeriod() {
+  state.month = monthOf(todayISO());
+  state.year = thisYear();
+  render();
+}
+
+function heroHtml(label, cents, sub) {
   return `<div class="hero">
-    <div class="hero-label">Spent in ${esc(monthLabel(state.month, { month: 'long' }))}</div>
-    <div class="hero-value">${fmt(sumCents(items))}</div>
-    <div class="hero-sub">${n} expense${n === 1 ? '' : 's'}${extra}</div>
+    <div class="hero-label">${esc(label)}</div>
+    <div class="hero-value">${fmt(cents)}</div>
+    <div class="hero-sub">${esc(sub)}</div>
   </div>`;
 }
 
 function renderList() {
   const items = inMonth(state.month).sort(newestFirst);
-  if (!items.length) {
-    els.list.innerHTML = heroHtml(items) + `<div class="empty"><div class="empty-icon">🧾</div>
-      <strong>No expenses yet</strong>Tap + to add one for ${esc(monthLabel(state.month, { month: 'long' }))}.</div>`;
+  const n = items.length;
+  const monthName = monthLabel(state.month, { month: 'long' });
+  let html = heroHtml(`Spent in ${monthName}`, sumCents(items), `${n} expense${n === 1 ? '' : 's'}`);
+  if (!n) {
+    els.list.innerHTML = html + `<div class="empty"><div class="empty-icon">🧾</div>
+      <strong>No expenses yet</strong>Tap + to add one for ${esc(monthName)}.</div>`;
     return;
   }
   const days = new Map();
@@ -166,7 +191,6 @@ function renderList() {
     if (!days.has(e.date)) days.set(e.date, []);
     days.get(e.date).push(e);
   }
-  let html = heroHtml(items);
   for (const [date, list] of days) {
     html += `<div class="day"><div class="day-head"><span>${esc(dayLabel(date))}</span><span>${fmt(sumCents(list))}</span></div><div class="card">`;
     for (const e of list) {
@@ -184,50 +208,69 @@ function renderList() {
   els.list.innerHTML = html;
 }
 
-function renderSummary() {
-  const items = inMonth(state.month);
+function categoryRows(items) {
   const total = sumCents(items);
-  const today = todayISO();
-  const elapsed = state.month === monthOf(today) ? parseISO(today).getDate() : daysInMonth(state.month);
-  let html = heroHtml(items, items.length ? ` · ${fmt(Math.round(total / elapsed))}/day avg` : '');
+  const byCat = new Map();
+  for (const e of items) byCat.set(e.category, (byCat.get(e.category) || 0) + e.cents);
+  const rows = [...byCat].sort((a, b) => b[1] - a[1]);
+  if (!rows.length) return '<p class="dash-empty">Nothing spent yet</p>';
+  const max = rows[0][1];
+  return rows.map(([cat, cents]) => `<div class="cat-row">
+      <div class="cat-line">
+        <span aria-hidden="true">${EMOJI[cat] || '📦'}</span>
+        <span class="cat-name">${esc(cat)}</span>
+        <span class="cat-pct">${Math.round((cents / total) * 100)}%</span>
+        <span class="cat-amount">${fmt(cents)}</span>
+      </div>
+      <div class="bar-track"><div class="bar" style="width:${(cents / max) * 100}%"></div></div>
+    </div>`).join('');
+}
 
-  if (items.length) {
-    const byCat = new Map();
-    for (const e of items) byCat.set(e.category, (byCat.get(e.category) || 0) + e.cents);
-    const rows = [...byCat].sort((a, b) => b[1] - a[1]);
-    const max = rows[0][1];
-    html += '<h2 class="section-title">By category</h2><div class="summary-card">';
-    for (const [cat, cents] of rows) {
-      const pct = Math.round((cents / total) * 100);
-      html += `<div class="cat-row">
-        <div class="cat-line">
-          <span aria-hidden="true">${EMOJI[cat] || '📦'}</span>
-          <span class="cat-name">${esc(cat)}</span>
-          <span class="cat-pct">${pct}%</span>
-          <span class="cat-amount">${fmt(cents)}</span>
-        </div>
-        <div class="bar-track"><div class="bar" style="width:${(cents / max) * 100}%"></div></div>
-      </div>`;
-    }
-    html += '</div>';
+function renderDashboard() {
+  const year = state.year;
+  const now = monthOf(todayISO());
+  const isThisYear = year === thisYear();
+  const months = MONTH_SHORT.map((_, i) => `${year}-${pad(i + 1)}`);
+  const totals = months.map(m => sumCents(inMonth(m)));
+  const yearItems = state.expenses.filter(e => e.date.startsWith(`${year}-`));
+  const total = sumCents(yearItems);
+  const monthsSoFar = isThisYear ? Number(now.slice(5)) : 12;
+  if (!state.dashMonth || !state.dashMonth.startsWith(`${year}-`)) state.dashMonth = isThisYear ? now : `${year}-12`;
+
+  const sel = state.dashMonth;
+  const selName = MONTH_SHORT[Number(sel.slice(5)) - 1];
+  const selTotal = totals[Number(sel.slice(5)) - 1];
+  const prev = shiftMonth(sel, -1);
+  const prevTotal = sumCents(inMonth(prev));
+  let change = '';
+  if (selTotal && prevTotal) {
+    const pct = Math.round(((selTotal - prevTotal) / prevTotal) * 100);
+    const prevName = MONTH_SHORT[Number(prev.slice(5)) - 1];
+    change = pct === 0 ? `Same as ${prevName}` : `${pct > 0 ? '↑' : '↓'} ${Math.abs(pct)}% vs ${prevName}`;
   }
 
-  const months = [];
-  for (let i = 5; i >= 0; i--) months.push(shiftMonth(state.month, -i));
-  const totals = months.map(m => sumCents(inMonth(m)));
+  let html = heroHtml(`Spent in ${year}`, total, total ? `Avg ${fmt(Math.round(total / monthsSoFar))} a month` : 'No expenses yet');
+
   const peak = Math.max(...totals, 1);
-  html += '<h2 class="section-title">Last 6 months</h2><div class="summary-card"><div class="trend">';
-  months.forEach((m, i) => {
-    const h = (totals[i] / peak) * 100;
-    const full = `${monthLabel(m)}: ${fmt(totals[i])}`;
-    html += `<button class="trend-col" data-month="${m}" aria-label="${esc(full)}" title="${esc(full)}"${m === state.month ? ' aria-current="true"' : ''}>
-      <span class="trend-value">${totals[i] ? esc(fmtShort(totals[i])) : ''}</span>
-      <span class="trend-bar" style="height:${totals[i] ? Math.max(h * 0.72, 2) : 0}%"></span>
-      <span class="trend-label">${esc(monthLabel(m, { month: 'short' }))}</span>
-    </button>`;
-  });
-  html += '</div></div>';
-  els.summary.innerHTML = html;
+  html += `<div class="dash-card">
+    <div class="dash-head"><span>${esc(monthLabel(sel, { month: 'long' }))}</span><strong>${fmt(selTotal)}</strong></div>
+    <div class="dash-sub">${change ? esc(change) : '&nbsp;'}</div>
+    <div class="months">${months.map((m, i) => `<button class="month-col" data-month="${m}" aria-label="${esc(`${monthLabel(m)}: ${fmt(totals[i])}`)}"${m === sel ? ' aria-current="true"' : ''}>
+        <span class="month-track"><span class="month-bar" style="height:${totals[i] ? Math.max((totals[i] / peak) * 100, 3) : 0}%"></span></span>
+        <span class="month-name">${MONTH_SHORT[i]}</span>
+      </button>`).join('')}</div>
+  </div>`;
+
+  const byYear = state.catScope === 'year';
+  html += `<div class="dash-row">
+    <h2 class="section-title">By category</h2>
+    <div class="seg" role="group" aria-label="Show categories for">
+      <button data-scope="month" aria-pressed="${!byYear}">${selName}</button>
+      <button data-scope="year" aria-pressed="${byYear}">${year}</button>
+    </div>
+  </div>
+  <div class="summary-card">${categoryRows(byYear ? yearItems : inMonth(sel))}</div>`;
+  els.dash.innerHTML = html;
 }
 
 /* ---------- Add / edit sheet ---------- */
@@ -388,76 +431,138 @@ async function compressPhoto(file) {
   }
 }
 
-/* ---------- Excel export ---------- */
+/* ---------- Excel export: same layout as the 2026_Expenses spreadsheet ---------- */
 
-function buildWorkbook(list) {
-  const X = XLSXWriter;
-  const S = X.STYLE;
-  const sorted = [...list].sort(oldestFirst);
+const XL_MONEY = '"$"#,##0.00';
+const XL_INK = 'FF3F3F3F';
+const XL_GREY = 'FFF2F2F2';
+const XL_THIN = { left: 'thin', right: 'thin', top: 'thin', bottom: 'thin' };
+const XL_CELL = { font: { b: true, color: XL_INK }, fill: XL_GREY, border: { ...XL_THIN, color: XL_INK } };
+const XL_TOTAL = { font: { b: true }, fill: XL_GREY, border: { left: 'thin', right: 'thin', bottom: 'double' }, numFmt: XL_MONEY };
+const XL_INPUT = { font: { color: 'FF3F3F76' }, fill: 'FFFFCC99', border: { ...XL_THIN, color: 'FF7F7F7F' } };
+const XL = {
+  title: { ...XL_CELL, font: { b: true, sz: 16, color: XL_INK }, align: { h: 'center' } },
+  yearTitle: { ...XL_CELL, font: { b: true, sz: 16, color: XL_INK }, fill: 'FFFFFF00', border: XL_THIN, align: { h: 'center' } },
+  yearHead: { ...XL_CELL, border: { left: 'thin', right: 'thin', bottom: 'thin', color: XL_INK }, align: { h: 'center' } },
+  center: { ...XL_CELL, align: { h: 'center' } },
+  left: { ...XL_CELL, align: { h: 'left' } },
+  date: { ...XL_CELL, numFmt: 14 },
+  money: { ...XL_CELL, numFmt: XL_MONEY },
+  cell: { ...XL_CELL, numFmt: XL_MONEY, align: { h: 'right' } },
+  cellWrap: { ...XL_CELL, numFmt: XL_MONEY, align: { h: 'right', wrap: true } },
+  // The last day of the month has a double line underneath, above the Total row.
+  cellLast: { ...XL_CELL, border: { ...XL_THIN, bottom: 'double', color: XL_INK }, numFmt: XL_MONEY, align: { h: 'right' } },
+  cellWrapLast: { ...XL_CELL, border: { ...XL_THIN, bottom: 'double', color: XL_INK }, numFmt: XL_MONEY, align: { h: 'right', wrap: true } },
+  totalLabel: { ...XL_CELL, border: { left: 'thin', top: 'thin', bottom: 'thin', color: XL_INK } },
+  total: XL_TOTAL,
+  totalNil: { ...XL_TOTAL, align: { h: 'right' } },
+  inputLabel: XL_INPUT,
+  inputMoney: { ...XL_INPUT, numFmt: XL_MONEY },
+};
+// Column widths from the original sheet; amount columns widened a little so larger sums don't show as ####.
+const XL_MONTH_WIDTHS = [10.3, 9, 14.3, 14, 11.2, 15.2, 22.3, 9.5, 12.5, 9, 11.2, 10, 11.2, 13.8, 11.2, 9, 34.7, null, null, 12];
 
-  const rows = [['Date', 'Category', 'Description', 'Amount (SGD)', 'Receipt'].map(v => ({ v, s: S.header }))];
-  for (const e of sorted) {
-    rows.push([
-      { v: X.dateSerial(e.date), s: S.date },
-      e.category,
-      e.note,
-      { v: e.cents / 100, s: S.money },
-      e.hasPhoto ? 'Yes' : '',
-    ]);
+// One sheet per month: a row per day, an amount + description column per category, then totals.
+function monthSheet(year, monthIndex) {
+  const key = `${year}-${pad(monthIndex + 1)}`;
+  const days = daysInMonth(key);
+  const totalRow = days + 3;
+  const groups = new Map();
+  for (const e of inMonth(key).sort(oldestFirst)) {
+    const k = `${e.date}|${e.category}`;
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(e);
   }
-  const lastRow = rows.length;
-  rows.push([
-    { v: 'Total', s: S.totalLabel }, { s: S.totalLabel }, { s: S.totalLabel },
-    { f: `SUM(D2:D${lastRow})`, v: sumCents(sorted) / 100, s: S.totalMoney },
-    { s: S.totalLabel },
-  ]);
-  const expensesSheet = { name: 'Expenses', rows, widths: [13, 15, 40, 15, 9], freezeHeader: true, autoFilter: `A1:E${lastRow}` };
 
-  // Summary: one row per month, one column per category (biggest spend first).
-  const catTotals = new Map();
-  const grid = new Map();
-  for (const e of sorted) {
-    const m = monthOf(e.date);
-    catTotals.set(e.category, (catTotals.get(e.category) || 0) + e.cents);
-    if (!grid.has(m)) grid.set(m, new Map());
-    grid.get(m).set(e.category, (grid.get(m).get(e.category) || 0) + e.cents);
+  const rows = [
+    [{ v: 'Daily expenses', s: XL.title }, ...Array(CATEGORIES.length * 2).fill({ s: XL.title })],
+    [{ v: 'Days', s: XL.center }, ...CATEGORIES.flatMap(c => [
+      { v: c.name, s: { ...XL_CELL, fill: c.fill, align: { h: 'center' } } },
+      { v: 'Description', s: { ...XL_CELL, fill: c.fill, numFmt: XL_MONEY, align: { h: 'right' } } },
+    ])],
+  ];
+  const heights = { 1: 21 };
+  const catTotals = CATEGORIES.map(() => 0);
+
+  for (let d = 1; d <= days; d++) {
+    const iso = `${key}-${pad(d)}`;
+    const row = [{ v: XLSXWriter.dateSerial(iso), s: XL.date }];
+    const last = d === days;
+    const plain = last ? XL.cellLast : XL.cell;
+    const wrap = last ? XL.cellWrapLast : XL.cellWrap;
+    let lines = 1;
+    CATEGORIES.forEach((c, ci) => {
+      const list = groups.get(`${iso}|${c.name}`);
+      if (!list) { row.push({ v: '-', s: plain }, { v: '-', s: plain }); return; }
+      const cents = sumCents(list);
+      catTotals[ci] += cents;
+      // Several items on one day become "=5.3+10.2" with one description per line, like the original sheet.
+      const amount = list.length === 1
+        ? { v: cents / 100, s: plain }
+        : { f: list.map(e => e.cents / 100).join('+'), v: cents / 100, s: plain };
+      const desc = list.map(e => e.note || c.name).join('\n');
+      lines = Math.max(lines, list.length);
+      row.push(amount, { v: desc, s: list.length > 1 ? wrap : plain });
+    });
+    if (lines > 1) heights[d + 2] = 16 * lines;
+    rows.push(row);
   }
-  const cats = [...catTotals].sort((a, b) => b[1] - a[1]).map(([c]) => c);
-  const months = [...grid.keys()].sort();
-  const lastCatCol = X.colName(cats.length);
-  const totalCol = X.colName(cats.length + 1);
-  const sRows = [['Month', ...cats, 'Total'].map(v => ({ v, s: S.header }))];
-  months.forEach((m, i) => {
-    const r = i + 2;
-    const cells = grid.get(m);
-    const rowTotal = [...cells.values()].reduce((a, b) => a + b, 0);
-    sRows.push([
-      { v: X.dateSerial(m + '-01'), s: S.month },
-      ...cats.map(c => (cells.get(c) ? { v: cells.get(c) / 100, s: S.money } : null)),
-      { f: `SUM(B${r}:${lastCatCol}${r})`, v: rowTotal / 100, s: S.money },
-    ]);
-  });
-  const lastS = sRows.length;
-  sRows.push([
-    { v: 'Total', s: S.totalLabel },
-    ...cats.map((c, i) => {
-      const col = X.colName(i + 1);
-      return { f: `SUM(${col}2:${col}${lastS})`, v: catTotals.get(c) / 100, s: S.totalMoney };
-    }),
-    { f: `SUM(${totalCol}2:${totalCol}${lastS})`, v: sumCents(sorted) / 100, s: S.totalMoney },
-  ]);
-  const summarySheet = { name: 'Summary', rows: sRows, widths: [12, ...cats.map(() => 14), 14], freezeHeader: true };
 
-  return X.build([expensesSheet, summarySheet]);
+  rows.push([{ v: 'Total', s: XL.totalLabel }, ...CATEGORIES.flatMap((c, ci) => {
+    const col = XLSXWriter.colName(1 + ci * 2);
+    return [{ f: `SUM(${col}3:${col}${totalRow - 1})`, v: catTotals[ci] / 100, s: XL.total }, { v: 'Nil', s: XL.totalNil }];
+  })]);
+
+  // The month's grand total sits in T15, which the Summary sheet reads.
+  const amountRefs = CATEGORIES.map((c, ci) => `${XLSXWriter.colName(1 + ci * 2)}${totalRow}`).join(',');
+  rows[14].push(null, { v: 'Total', s: XL.inputLabel }, { f: `SUM(${amountRefs})`, v: catTotals.reduce((a, b) => a + b, 0) / 100, s: XL.inputMoney });
+
+  return {
+    name: MONTH_SHORT[monthIndex], rows, heights, widths: XL_MONTH_WIDTHS,
+    merges: [`A1:${XLSXWriter.colName(CATEGORIES.length * 2)}1`],
+    todayHighlight: { range: `A3:A${totalRow - 1}`, fill: 'FFFFFF00' },
+  };
+}
+
+function summarySheet(year) {
+  const totals = MONTH_SHORT.map((_, i) => sumCents(inMonth(`${year}-${pad(i + 1)}`)));
+  const yearly = totals.reduce((a, b) => a + b, 0);
+  const now = new Date();
+  const asOf = `${pad(now.getDate())}/${pad(now.getMonth() + 1)}/${now.getFullYear()}`;
+  return {
+    name: 'Summary',
+    rows: [
+      [{ v: 'Expenses summary', s: XL.yearTitle }, ...Array(14).fill({ s: XL.yearTitle })],
+      [{ v: year, s: XL.yearHead }, ...MONTH_SHORT.map(m => ({ v: m, s: XL.yearHead })), { v: 'Yearly', s: XL.yearHead }, { v: 'Average', s: XL.yearHead }],
+      [
+        { v: 'Actual amount spent', s: XL.left },
+        ...MONTH_SHORT.map((m, i) => ({ f: `${m}!T15`, v: totals[i] / 100, s: XL.money })),
+        { f: 'SUM(B3:M3)', v: yearly / 100, s: XL.money },
+        { f: 'N3/12', v: yearly / 1200, s: XL.money },
+      ],
+      [{ v: `As of ${asOf}`, s: XL.center }, ...Array(14).fill({ s: XL.center })],
+    ],
+    widths: [19.8, 11.5, 14.3, 14, 13.5, 15.2, 21.7, 13.5, 13.5, 11, 11, 11, 11, 13.8, 12.8],
+    heights: { 1: 21 },
+    merges: ['A1:O1', 'A4:O4'],
+    zoom: 115,
+  };
+}
+
+function buildYearWorkbook(year) {
+  return XLSXWriter.build([summarySheet(year), ...MONTH_SHORT.map((_, i) => monthSheet(year, i))]);
 }
 
 function openExportSheet() {
-  const monthCount = inMonth(state.month).length;
-  const allCount = state.expenses.length;
-  els.exportMonth.textContent = `${monthLabel(state.month)} (${monthCount})`;
-  els.exportMonth.disabled = !monthCount;
-  els.exportAll.textContent = `All expenses (${allCount})`;
-  els.exportAll.disabled = !allCount;
+  const counts = new Map();
+  for (const e of state.expenses) {
+    const y = e.date.slice(0, 4);
+    counts.set(y, (counts.get(y) || 0) + 1);
+  }
+  const years = [...counts.keys()].sort().reverse();
+  els.exportGroup.innerHTML = '<div class="action-title">Export to Excel</div>' + (years.length
+    ? years.map(y => `<button type="button" data-export="${y}">${y} (${counts.get(y)} expense${counts.get(y) === 1 ? '' : 's'})</button>`).join('')
+    : '<button type="button" disabled>No expenses yet</button>');
   resetBackupButton();
   const last = readLastBackup();
   els.lastBackup.textContent = last
@@ -494,11 +599,8 @@ async function saveFile(file) {
   return 'done';
 }
 
-async function exportExcel(scope) {
-  const list = scope === 'all' ? state.expenses : inMonth(state.month);
-  if (!list.length) { toast('Nothing to export'); return; }
-  const name = scope === 'all' ? `Expenses-all-${todayISO()}.xlsx` : `Expenses-${state.month}.xlsx`;
-  const file = new File([buildWorkbook(list)], name, { type: XLSXWriter.MIME });
+async function exportExcel(year) {
+  const file = new File([buildYearWorkbook(Number(year))], `${year}_Expenses.xlsx`, { type: XLSXWriter.MIME });
   if (await saveFile(file) === 'blocked') downloadFile(file);
 }
 
@@ -602,12 +704,12 @@ async function restoreBackup(file) {
   const records = missing.map(x => {
     const photo = x.photo ? files.get(x.photo) : null;
     return {
-      expense: {
+      expense: normalizeCategory({
         id: x.id, date: x.date, cents: x.cents, category: x.category,
         note: typeof x.note === 'string' ? x.note : '',
         createdAt: Number(x.createdAt) || Date.now(),
         hasPhoto: !!photo,
-      },
+      }),
       photo: photo ? new Blob([photo], { type: x.photoType || 'image/jpeg' }) : null,
     };
   });
@@ -638,9 +740,9 @@ function toast(msg) {
 function bind() {
   els.addBtn.addEventListener('click', () => openSheet(null));
   els.exportBtn.addEventListener('click', openExportSheet);
-  els.prevMonth.addEventListener('click', () => { state.month = shiftMonth(state.month, -1); render(); });
-  els.nextMonth.addEventListener('click', () => { state.month = shiftMonth(state.month, 1); render(); });
-  els.monthLabel.addEventListener('click', () => { state.month = monthOf(todayISO()); render(); });
+  els.prevMonth.addEventListener('click', () => shiftPeriod(-1));
+  els.nextMonth.addEventListener('click', () => shiftPeriod(1));
+  els.monthLabel.addEventListener('click', resetPeriod);
 
   document.querySelectorAll('.tab').forEach(t =>
     t.addEventListener('click', () => { state.tab = t.dataset.tab; render(); window.scrollTo(0, 0); }));
@@ -649,9 +751,13 @@ function bind() {
     const item = e.target.closest('.item');
     if (item) openSheet(state.expenses.find(x => x.id === item.dataset.id));
   });
-  els.summary.addEventListener('click', e => {
-    const col = e.target.closest('.trend-col');
-    if (col) { state.month = col.dataset.month; render(); }
+  els.dash.addEventListener('click', e => {
+    const col = e.target.closest('.month-col');
+    const scope = e.target.closest('[data-scope]');
+    if (col) state.dashMonth = col.dataset.month;
+    else if (scope) state.catScope = scope.dataset.scope;
+    else return;
+    render();
   });
 
   els.chips.addEventListener('click', e => {
@@ -713,7 +819,9 @@ async function start() {
   bind();
   try {
     await db.open();
-    state.expenses = await db.all('expenses');
+    const saved = await db.all('expenses');
+    state.expenses = saved.map(normalizeCategory);
+    await Promise.all(state.expenses.filter((e, i) => e !== saved[i]).map(e => db.put('expenses', e)));
   } catch (err) {
     console.error(err);
     toast('Storage unavailable — entries won’t be saved');
