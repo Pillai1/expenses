@@ -219,7 +219,7 @@ function categoryRows(items) {
       <div class="cat-line">
         <span aria-hidden="true">${EMOJI[cat] || '📦'}</span>
         <span class="cat-name">${esc(cat)}</span>
-        <span class="cat-pct">${Math.round((cents / total) * 100)}%</span>
+        <span class="cat-pct">${cents / total < 0.005 ? '<1' : Math.round((cents / total) * 100)}%</span>
         <span class="cat-amount">${fmt(cents)}</span>
       </div>
       <div class="bar-track"><div class="bar" style="width:${(cents / max) * 100}%"></div></div>
@@ -500,9 +500,10 @@ function monthSheet(year, monthIndex) {
       const amount = list.length === 1
         ? { v: cents / 100, s: plain }
         : { f: list.map(e => e.cents / 100).join('+'), v: cents / 100, s: plain };
-      const desc = list.map(e => e.note || c.name).join('\n');
-      lines = Math.max(lines, list.length);
-      row.push(amount, { v: desc, s: list.length > 1 ? wrap : plain });
+      // One line per place: two Grab rides show "Grab" once, matching how the sheet was kept by hand.
+      const descLines = [...new Set(list.map(e => e.note || c.name))];
+      lines = Math.max(lines, descLines.length);
+      row.push(amount, { v: descLines.join('\n'), s: descLines.length > 1 ? wrap : plain });
     });
     if (lines > 1) heights[d + 2] = 16 * lines;
     rows.push(row);
