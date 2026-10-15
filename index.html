@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Expenses">
+  <meta name="theme-color" content="#f2f2f7" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+  <title>Expenses</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icons/icon-180.png">
+  <link rel="icon" type="image/png" href="icons/icon-192.png">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-row">
+      <h1 id="title">Expenses</h1>
+      <button class="icon-btn" id="exportBtn" aria-label="Export to Excel">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7.5 7.5 12 3l4.5 4.5M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>
+      </button>
+    </div>
+    <div class="month-nav">
+      <button class="icon-btn" id="prevMonth" aria-label="Previous month">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>
+      </button>
+      <button class="month-label" id="monthLabel" aria-label="Jump to this month"></button>
+      <button class="icon-btn" id="nextMonth" aria-label="Next month">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <main>
+    <section id="view-list"></section>
+    <section id="view-summary" hidden></section>
+  </main>
+
+  <nav class="tabbar">
+    <button class="tab" data-tab="list" aria-current="page">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/></svg>
+      <span>Expenses</span>
+    </button>
+    <button class="add-btn" id="addBtn" aria-label="Add expense">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+    </button>
+    <button class="tab" data-tab="summary">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20V12M12 20V5M19 20v-9"/></svg>
+      <span>Summary</span>
+    </button>
+  </nav>
+
+  <dialog id="sheet" aria-labelledby="sheetTitle">
+    <form method="dialog" id="sheetForm" novalidate>
+      <div class="sheet-head">
+        <button type="button" class="text-btn" id="cancelBtn">Cancel</button>
+        <h2 id="sheetTitle">New expense</h2>
+        <button type="submit" class="text-btn strong" id="saveBtn">Save</button>
+      </div>
+      <div class="sheet-body">
+        <label class="amount-wrap" id="amountWrap">
+          <span class="currency">$</span>
+          <input id="amount" type="text" inputmode="decimal" placeholder="0.00" autocomplete="off" enterkeyhint="done" aria-label="Amount in SGD">
+        </label>
+        <p class="field-error" id="amountError" hidden>Enter an amount</p>
+
+        <div class="section-label">Category</div>
+        <div class="chips" id="chips" role="radiogroup" aria-label="Category"></div>
+        <p class="field-error" id="categoryError" hidden>Pick a category</p>
+
+        <div class="group">
+          <label class="row">
+            <span>Date</span>
+            <input id="date" type="date" required>
+          </label>
+          <label class="row">
+            <input id="note" type="text" placeholder="Description (optional)" maxlength="200" enterkeyhint="done" autocomplete="off">
+          </label>
+        </div>
+
+        <div class="group">
+          <label class="row photo-add" id="photoAdd">
+            <input id="photoInput" type="file" accept="image/*" class="visually-hidden">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>
+            <span>Add receipt photo</span>
+          </label>
+          <div class="row photo-preview" id="photoPreview" hidden>
+            <button type="button" class="thumb-btn" id="thumbBtn" aria-label="View receipt photo"><img id="photoThumb" alt="Receipt"></button>
+            <span class="grow">Receipt photo</span>
+            <button type="button" class="text-btn danger" id="photoRemove">Remove</button>
+          </div>
+        </div>
+
+        <button type="button" class="delete-btn" id="deleteBtn" hidden>Delete expense</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="exportSheet" class="action-sheet" aria-label="Export and backup">
+    <div class="action-group">
+      <div class="action-title">Export to Excel</div>
+      <button type="button" data-export="month" id="exportMonth"></button>
+      <button type="button" data-export="all" id="exportAll"></button>
+    </div>
+    <div class="action-group">
+      <div class="action-title">Backup, including receipt photos<br><span id="lastBackup"></span></div>
+      <button type="button" id="backupSave">Save backup file</button>
+      <label class="action-btn" id="backupRestore">
+        Restore from backup file
+        <input type="file" id="restoreInput" accept=".zip,application/zip" class="visually-hidden">
+      </label>
+    </div>
+    <button type="button" class="action-cancel" id="exportCancel">Cancel</button>
+  </dialog>
+
+  <dialog id="viewer" aria-label="Receipt photo">
+    <img id="viewerImg" alt="Receipt">
+    <button type="button" class="viewer-close" id="viewerClose">Done</button>
+  </dialog>
+
+  <div id="toast" role="status" aria-live="polite"></div>
+
+  <script src="zip.js"></script>
+  <script src="xlsx.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
