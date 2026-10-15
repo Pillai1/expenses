@@ -360,25 +360,92 @@ function animateView(el, cls) {
 
 // Tabs keep their own place; tapping the current tab again goes back to its top level.
 function showTab(tab) {
-  if (tab === state.tab && tab === 'dash' && state.detail) { closeDetail(); return; }
+  if (tab === state.tab && tab === 'dash' && state.detail) { goBack(); return; }
   state.tab = tab;
   render();
   animateView(tab === 'list' ? els.list : state.detail ? els.detailView : els.dash);
   window.scrollTo(0, 0);
 }
 
+// Opening a category page adds a history entry, so the Back button, the edge swipe and the
+// system back gesture all go back the same way (through popstate) and never twice.
 function openDetail(category) {
   state.detail = { category, key: state.catScope === 'year' ? String(state.year) : state.dashMonth };
+  history.pushState({ detail: true }, '');
   render();
   animateView(els.detailView, 'push');
   window.scrollTo(0, 0);
 }
 
+function goBack() {
+  if (history.state && history.state.detail) history.back(); // closeDetail runs on popstate
+  else closeDetail();
+}
+
 function closeDetail() {
+  if (!state.detail) return;
   state.detail = null;
   render();
-  animateView(els.dash, 'pop');
-  window.scrollTo(0, 0);
+  if (state.tab === 'dash') {
+    animateView(els.dash, 'pop');
+    window.scrollTo(0, 0);
+  }
+}
+
+// iOS-style swipe from the left edge: the page follows the finger and goes back once it's
+// dragged past about a third of the screen or flicked.
+function bindEdgeSwipe() {
+  const EDGE = 30;
+  const page = document.querySelector('main');
+  let start = null;
+  let dragging = false;
+
+  const onMove = e => {
+    const t = e.touches[0];
+    const dx = t.clientX - start.x;
+    const dy = t.clientY - start.y;
+    if (!dragging) {
+      if (Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx)) { finish(null); return; } // it's a scroll
+      if (dx < 8) return;
+      dragging = true;
+      page.style.transition = 'none';
+    }
+    e.preventDefault();
+    page.style.transform = `translateX(${Math.max(0, dx)}px)`;
+  };
+
+  const finish = e => {
+    document.removeEventListener('touchmove', onMove);
+    document.removeEventListener('touchend', finish);
+    document.removeEventListener('touchcancel', finish);
+    const wasDragging = dragging;
+    const begin = start;
+    start = null;
+    dragging = false;
+    if (!wasDragging || !e) { page.style.transform = ''; return; }
+    const dx = e.changedTouches[0].clientX - begin.x;
+    const speed = dx / Math.max(1, e.timeStamp - begin.t); // px per ms
+    if (e.type === 'touchend' && (dx > innerWidth * 0.33 || (speed > 0.45 && dx > 40))) {
+      page.style.transition = 'transform 0.22s ease-out';
+      page.style.transform = `translateX(${innerWidth}px)`;
+      setTimeout(() => { page.style.transition = 'none'; page.style.transform = ''; goBack(); }, 220);
+    } else {
+      page.style.transition = 'transform 0.3s cubic-bezier(0.32, 0.72, 0, 1)';
+      page.style.transform = '';
+    }
+  };
+
+  document.addEventListener('touchstart', e => {
+    if (!state.detail || state.tab !== 'dash' || start || e.touches.length !== 1) return;
+    if (document.querySelector('dialog[open]')) return;
+    const t = e.touches[0];
+    if (t.clientX > EDGE) return;
+    start = { x: t.clientX, y: t.clientY, t: e.timeStamp };
+    // Only listen non-passively while a swipe might be happening, so normal scrolling stays smooth.
+    document.addEventListener('touchmove', onMove, { passive: false });
+    document.addEventListener('touchend', finish);
+    document.addEventListener('touchcancel', finish);
+  }, { passive: true });
 }
 
 // The header arrows move the month on the Expenses tab and the year on the Dashboard.
@@ -917,7 +984,9 @@ function bind() {
   els.addBtn.addEventListener('click', () => openSheet(null));
   els.menuBtn.addEventListener('click', openMenu);
   els.hideBtn.addEventListener('click', toggleHidden);
-  els.backBtn.addEventListener('click', closeDetail);
+  els.backBtn.addEventListener('click', goBack);
+  window.addEventListener('popstate', closeDetail);
+  bindEdgeSwipe();
   els.prevMonth.addEventListener('click', () => shiftPeriod(-1));
   els.nextMonth.addEventListener('click', () => shiftPeriod(1));
   els.monthLabel.addEventListener('click', resetPeriod);
@@ -1005,6 +1074,7 @@ function bind() {
 /* ---------- Start ---------- */
 
 async function start() {
+  if (history.state && history.state.detail) history.replaceState(null, ''); // fresh launch starts at the top level
   bind();
   try {
     await db.open();

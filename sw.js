@@ -1,5 +1,5 @@
 // Offline support: always try the network, keep a cached copy for when there is none.
-const CACHE = 'expenses-v5';
+const CACHE = 'expenses-v6';
 const ASSETS = [
   './',
   './index.html',
