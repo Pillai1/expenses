@@ -3,3 +3,5 @@
 *.xlsx
 *.zip
 .gstack/
+# Personal expense files (any format) stay on this Mac
+expenses/

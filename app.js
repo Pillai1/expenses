@@ -93,6 +93,11 @@ const db = {
 
 /* ---------- State ---------- */
 
+const HIDE_KEY = 'expenses-hide-amounts';
+function readHidden() {
+  try { return localStorage.getItem(HIDE_KEY) === '1'; } catch { return false; }
+}
+
 const state = {
   expenses: [],
   tab: 'list',
@@ -103,6 +108,9 @@ const state = {
   editing: null,       // expense being edited, or null for a new one
   category: null,      // selected category in the sheet
   draftPhoto: undefined, // undefined = unchanged, null = removed, Blob = new photo
+  sign: 1,             // 1 = spent, -1 = received (paybacks, refunds) in the sheet
+  hidden: readHidden(), // amounts masked with asterisks
+  detail: null,        // { category, key: 'YYYY' | 'YYYY-MM' } for the category detail view
   thumbUrl: null,
 };
 
@@ -118,13 +126,16 @@ const els = {
   exportSheet: $('exportSheet'), exportGroup: $('exportGroup'), exportCancel: $('exportCancel'),
   lastBackup: $('lastBackup'), backupSave: $('backupSave'), restoreInput: $('restoreInput'),
   viewer: $('viewer'), viewerImg: $('viewerImg'), viewerClose: $('viewerClose'), toast: $('toast'),
+  hideBtn: $('hideBtn'), signSeg: $('signSeg'), currency: $('currency'),
+  detail: $('detail'), detailTitle: $('detailTitle'), detailBody: $('detailBody'), detailClose: $('detailClose'),
 };
 
 function esc(s) {
   return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 function sumCents(list) { return list.reduce((n, e) => n + e.cents, 0); }
-function fmt(cents) { return money.format(cents / 100); }
+// With "hide amounts" on, every amount on screen shows as $**** (exports and backups are unaffected).
+function fmt(cents) { return state.hidden ? '$****' : money.format(cents / 100); }
 function newestFirst(a, b) { return b.date.localeCompare(a.date) || b.createdAt - a.createdAt; }
 function oldestFirst(a, b) { return a.date.localeCompare(b.date) || a.createdAt - b.createdAt; }
 function inMonth(key) { return state.expenses.filter(e => monthOf(e.date) === key); }
@@ -137,6 +148,9 @@ function normalizeCategory(e) {
 
 /* ---------- Rendering ---------- */
 
+const ICON_EYE = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>';
+const ICON_EYE_OFF = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18M10.6 5.1A10.7 10.7 0 0 1 12 5c6.5 0 10 7 10 7a17.6 17.6 0 0 1-3.2 4.2M6.6 6.6C3.9 8.4 2 12 2 12s3.5 7 10 7c1.9 0 3.6-.6 5-1.5M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>';
+const ICON_CHEVRON = '<svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg>';
 const ICON_RECEIPT = '<svg viewBox="0 0 24 24" aria-label="Has receipt"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>';
 
 function render() {
@@ -148,6 +162,9 @@ function render() {
   els.nextMonth.setAttribute('aria-label', isList ? 'Next month' : 'Next year');
   els.list.hidden = !isList;
   els.dash.hidden = isList;
+  els.hideBtn.innerHTML = state.hidden ? ICON_EYE_OFF : ICON_EYE;
+  els.hideBtn.setAttribute('aria-pressed', String(state.hidden));
+  els.hideBtn.setAttribute('aria-label', state.hidden ? 'Show amounts' : 'Hide amounts');
   document.querySelectorAll('.tab').forEach(t => {
     if (t.dataset.tab === state.tab) t.setAttribute('aria-current', 'page');
     else t.removeAttribute('aria-current');
@@ -160,6 +177,13 @@ function shiftPeriod(delta) {
   if (state.tab === 'list') state.month = shiftMonth(state.month, delta);
   else state.year += delta;
   render();
+}
+
+function toggleHidden() {
+  state.hidden = !state.hidden;
+  try { localStorage.setItem(HIDE_KEY, state.hidden ? '1' : '0'); } catch {}
+  render();
+  if (els.detail.open) renderDetail();
 }
 
 function resetPeriod() {
@@ -176,54 +200,59 @@ function heroHtml(label, cents, sub) {
   </div>`;
 }
 
-function renderList() {
-  const items = inMonth(state.month).sort(newestFirst);
-  const n = items.length;
-  const monthName = monthLabel(state.month, { month: 'long' });
-  let html = heroHtml(`Spent in ${monthName}`, sumCents(items), `${n} expense${n === 1 ? '' : 's'}`);
-  if (!n) {
-    els.list.innerHTML = html + `<div class="empty"><div class="empty-icon">🧾</div>
-      <strong>No expenses yet</strong>Tap + to add one for ${esc(monthName)}.</div>`;
-    return;
-  }
+function dayGroupsHtml(items) {
   const days = new Map();
   for (const e of items) {
     if (!days.has(e.date)) days.set(e.date, []);
     days.get(e.date).push(e);
   }
+  let html = '';
   for (const [date, list] of days) {
     html += `<div class="day"><div class="day-head"><span>${esc(dayLabel(date))}</span><span>${fmt(sumCents(list))}</span></div><div class="card">`;
     for (const e of list) {
-      const title = e.note || e.category;
-      const sub = e.note ? esc(e.category) : '';
+      const sub = [e.note ? esc(e.category) : '', e.cents < 0 ? 'Received' : ''].filter(Boolean).join(' · ');
       html += `<button class="item" data-id="${esc(e.id)}">
         <span class="emoji" aria-hidden="true">${EMOJI[e.category] || '📦'}</span>
-        <span class="item-text"><span class="item-title">${esc(title)}</span>
+        <span class="item-text"><span class="item-title">${esc(e.note || e.category)}</span>
           ${sub || e.hasPhoto ? `<span class="item-sub">${sub}${e.hasPhoto ? ICON_RECEIPT : ''}</span>` : ''}</span>
-        <span class="item-amount">${fmt(e.cents)}</span>
+        <span class="item-amount${e.cents < 0 ? ' received' : ''}">${fmt(e.cents)}</span>
       </button>`;
     }
     html += '</div></div>';
   }
-  els.list.innerHTML = html;
+  return html;
 }
 
+function renderList() {
+  const items = inMonth(state.month).sort(newestFirst);
+  const n = items.length;
+  const monthName = monthLabel(state.month, { month: 'long' });
+  const html = heroHtml(`Spent in ${monthName}`, sumCents(items), `${n} expense${n === 1 ? '' : 's'}`);
+  els.list.innerHTML = html + (n ? dayGroupsHtml(items) : `<div class="empty"><div class="empty-icon">🧾</div>
+      <strong>No expenses yet</strong>Tap + to add one for ${esc(monthName)}.</div>`);
+}
+
+// Net per category (money received reduces it). Spending categories get a bar; net-received ones are listed last.
 function categoryRows(items) {
-  const total = sumCents(items);
   const byCat = new Map();
   for (const e of items) byCat.set(e.category, (byCat.get(e.category) || 0) + e.cents);
-  const rows = [...byCat].sort((a, b) => b[1] - a[1]);
+  const rows = [...byCat].filter(([, c]) => c !== 0).sort((a, b) => b[1] - a[1]);
   if (!rows.length) return '<p class="dash-empty">Nothing spent yet</p>';
-  const max = rows[0][1];
-  return rows.map(([cat, cents]) => `<div class="cat-row">
-      <div class="cat-line">
+  const spent = rows.reduce((n, [, c]) => n + Math.max(c, 0), 0);
+  const max = Math.max(rows[0][1], 1);
+  return rows.map(([cat, cents]) => {
+    const pct = cents <= 0 ? '' : cents / spent < 0.005 ? '<1%' : `${Math.round((cents / spent) * 100)}%`;
+    return `<button class="cat-row" data-cat="${esc(cat)}">
+      <span class="cat-line">
         <span aria-hidden="true">${EMOJI[cat] || '📦'}</span>
         <span class="cat-name">${esc(cat)}</span>
-        <span class="cat-pct">${cents / total < 0.005 ? '<1' : Math.round((cents / total) * 100)}%</span>
-        <span class="cat-amount">${fmt(cents)}</span>
-      </div>
-      <div class="bar-track"><div class="bar" style="width:${(cents / max) * 100}%"></div></div>
-    </div>`).join('');
+        <span class="cat-pct">${pct}</span>
+        <span class="cat-amount${cents < 0 ? ' received' : ''}">${fmt(cents)}</span>
+        ${ICON_CHEVRON}
+      </span>
+      ${cents > 0 ? `<span class="bar-track"><span class="bar" style="width:${(cents / max) * 100}%"></span></span>` : ''}
+    </button>`;
+  }).join('');
 }
 
 function renderDashboard() {
@@ -251,12 +280,12 @@ function renderDashboard() {
 
   let html = heroHtml(`Spent in ${year}`, total, total ? `Avg ${fmt(Math.round(total / monthsSoFar))} a month` : 'No expenses yet');
 
-  const peak = Math.max(...totals, 1);
+  const peak = Math.max(...totals, 1); // a month can't show below zero, even if more came in than went out
   html += `<div class="dash-card">
     <div class="dash-head"><span>${esc(monthLabel(sel, { month: 'long' }))}</span><strong>${fmt(selTotal)}</strong></div>
     <div class="dash-sub">${change ? esc(change) : '&nbsp;'}</div>
     <div class="months">${months.map((m, i) => `<button class="month-col" data-month="${m}" aria-label="${esc(`${monthLabel(m)}: ${fmt(totals[i])}`)}"${m === sel ? ' aria-current="true"' : ''}>
-        <span class="month-track"><span class="month-bar" style="height:${totals[i] ? Math.max((totals[i] / peak) * 100, 3) : 0}%"></span></span>
+        <span class="month-track"><span class="month-bar" style="height:${totals[i] > 0 ? Math.max((totals[i] / peak) * 100, 3) : 0}%"></span></span>
         <span class="month-name">${MONTH_SHORT[i]}</span>
       </button>`).join('')}</div>
   </div>`;
@@ -273,7 +302,57 @@ function renderDashboard() {
   els.dash.innerHTML = html;
 }
 
+/* ---------- Category detail (from the Dashboard) ---------- */
+
+function openDetail(category) {
+  state.detail = { category, key: state.catScope === 'year' ? String(state.year) : state.dashMonth };
+  renderDetail();
+  document.body.classList.add('locked');
+  els.detail.showModal();
+  els.detailBody.scrollTop = 0;
+}
+
+function renderDetail() {
+  const { category, key } = state.detail;
+  const items = state.expenses.filter(e => e.category === category && e.date.startsWith(`${key}-`)).sort(newestFirst);
+  const n = items.length;
+  els.detailTitle.textContent = `${EMOJI[category] || '📦'} ${category}`;
+  let html = heroHtml(key.length === 4 ? key : monthLabel(key), sumCents(items), `${n} expense${n === 1 ? '' : 's'}`);
+
+  // Where it went: one row per description (e.g. "Economy rice 12×"), biggest first.
+  const places = new Map();
+  for (const e of items) {
+    const name = e.note || category;
+    const k = name.toLowerCase();
+    const place = places.get(k) || { name, cents: 0, count: 0 };
+    place.cents += e.cents;
+    place.count += 1;
+    places.set(k, place);
+  }
+  const ranked = [...places.values()].sort((a, b) => b.cents - a.cents);
+  if (ranked.length > 1) {
+    const rest = ranked.slice(10);
+    const shown = rest.length
+      ? [...ranked.slice(0, 10), { name: `${rest.length} more`, cents: sumCents(rest), count: rest.reduce((c, p) => c + p.count, 0) }]
+      : ranked;
+    html += '<h2 class="section-title">Where it went</h2><div class="summary-card">' + shown.map(p => `<div class="place-row">
+        <span class="place-name">${esc(p.name)}</span>
+        <span class="place-count">${p.count}×</span>
+        <span class="place-amount${p.cents < 0 ? ' received' : ''}">${fmt(p.cents)}</span>
+      </div>`).join('') + '</div>';
+  }
+  html += n ? '<h2 class="section-title">All expenses</h2>' + dayGroupsHtml(items) : '<p class="dash-empty">Nothing here yet</p>';
+  els.detailBody.innerHTML = html;
+}
+
 /* ---------- Add / edit sheet ---------- */
+
+function setSign(sign) {
+  state.sign = sign;
+  els.signSeg.querySelectorAll('[data-sign]').forEach(b => b.setAttribute('aria-pressed', String(Number(b.dataset.sign) === sign)));
+  els.currency.textContent = sign < 0 ? '−$' : '$';
+  els.amountWrap.classList.toggle('received', sign < 0);
+}
 
 function renderChips() {
   els.chips.innerHTML = CATEGORIES.map(c =>
@@ -295,7 +374,8 @@ function openSheet(expense) {
   state.category = expense ? expense.category : null;
   state.draftPhoto = undefined;
   els.sheetTitle.textContent = expense ? 'Edit expense' : 'New expense';
-  els.amount.value = expense ? (expense.cents / 100).toFixed(2) : '';
+  els.amount.value = expense ? (Math.abs(expense.cents) / 100).toFixed(2) : '';
+  setSign(expense && expense.cents < 0 ? -1 : 1);
   sizeAmount();
   els.date.value = expense ? expense.date : todayISO();
   els.note.value = expense ? expense.note : '';
@@ -340,7 +420,7 @@ function flag(el, errorEl) {
 }
 
 async function saveSheet() {
-  const cents = parseAmount(els.amount.value);
+  const cents = parseAmount(els.amount.value) * state.sign;
   els.amountError.hidden = !!cents;
   els.categoryError.hidden = !!state.category;
   if (!cents) { flag(els.amountWrap, els.amountError); els.amount.focus(); return; }
@@ -374,6 +454,7 @@ async function saveSheet() {
   state.month = monthOf(expense.date);
   closeSheet();
   render();
+  if (els.detail.open) renderDetail();
   toast(isEdit ? 'Updated' : 'Saved');
 }
 
@@ -400,6 +481,7 @@ async function deleteExpense() {
   state.expenses = state.expenses.filter(e => e.id !== id);
   closeSheet();
   render();
+  if (els.detail.open) renderDetail();
   toast('Deleted');
 }
 
@@ -499,7 +581,7 @@ function monthSheet(year, monthIndex) {
       // Several items on one day become "=5.3+10.2" with one description per line, like the original sheet.
       const amount = list.length === 1
         ? { v: cents / 100, s: plain }
-        : { f: list.map(e => e.cents / 100).join('+'), v: cents / 100, s: plain };
+        : { f: list.map((e, i) => (i && e.cents > 0 ? '+' : '') + e.cents / 100).join(''), v: cents / 100, s: plain };
       // One line per place: two Grab rides show "Grab" once, matching how the sheet was kept by hand.
       const descLines = [...new Set(list.map(e => e.note || c.name))];
       lines = Math.max(lines, descLines.length);
@@ -675,7 +757,7 @@ async function saveBackup() {
 function isBackupEntry(x) {
   return x && typeof x.id === 'string' && x.id &&
     typeof x.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(x.date) &&
-    Number.isInteger(x.cents) && x.cents > 0 &&
+    Number.isInteger(x.cents) && x.cents !== 0 &&
     typeof x.category === 'string' && x.category;
 }
 
@@ -741,6 +823,17 @@ function toast(msg) {
 function bind() {
   els.addBtn.addEventListener('click', () => openSheet(null));
   els.exportBtn.addEventListener('click', openExportSheet);
+  els.hideBtn.addEventListener('click', toggleHidden);
+  els.signSeg.addEventListener('click', e => {
+    const btn = e.target.closest('[data-sign]');
+    if (btn) setSign(Number(btn.dataset.sign));
+  });
+  els.detailClose.addEventListener('click', () => els.detail.close());
+  els.detail.addEventListener('close', () => { if (!els.sheet.open) document.body.classList.remove('locked'); });
+  els.detailBody.addEventListener('click', e => {
+    const item = e.target.closest('.item');
+    if (item) openSheet(state.expenses.find(x => x.id === item.dataset.id));
+  });
   els.prevMonth.addEventListener('click', () => shiftPeriod(-1));
   els.nextMonth.addEventListener('click', () => shiftPeriod(1));
   els.monthLabel.addEventListener('click', resetPeriod);
@@ -755,6 +848,8 @@ function bind() {
   els.dash.addEventListener('click', e => {
     const col = e.target.closest('.month-col');
     const scope = e.target.closest('[data-scope]');
+    const cat = e.target.closest('.cat-row');
+    if (cat) { openDetail(cat.dataset.cat); return; }
     if (col) state.dashMonth = col.dataset.month;
     else if (scope) state.catScope = scope.dataset.scope;
     else return;
@@ -777,7 +872,7 @@ function bind() {
   els.cancelBtn.addEventListener('click', closeSheet);
   els.deleteBtn.addEventListener('click', deleteExpense);
   els.sheet.addEventListener('close', () => {
-    document.body.classList.remove('locked');
+    if (!els.detail.open) document.body.classList.remove('locked');
     setThumb(null);
     els.photoInput.value = '';
   });

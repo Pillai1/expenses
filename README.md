@@ -5,7 +5,11 @@ A personal expense tracker for iPhone, installed as a Home Screen web app. Amoun
 - Add an expense with amount, category, date, description and an optional receipt photo
 - Categories match the yearly spreadsheet: Food, Entertainment, PayNow/Paylah, Transport, Cab, Phone Bill, Clothing/Shoe, Others
 - Edit or delete any expense by tapping it
-- Dashboard: total for the year, a Jan–Dec chart, and spending by category for a month or the whole year
+- **Spent / Received**: money paid back to you (PayNow from friends, refunds) is entered as Received, shows as
+  −$21.30 and reduces your totals, just like the negative amounts in the old spreadsheets
+- Dashboard: total for the year, a Jan–Dec chart, and spending by category for a month or the whole year.
+  Tap a category to see where the money went (e.g. "Uncle Penyet 6×") and every expense in it
+- Eye button (top right) hides every amount as `$****`; the app remembers your choice
 - Export a year to Excel (`2026_Expenses.xlsx`) in the same layout as the original spreadsheet: a Summary sheet
   plus one sheet per month with a row per day. Several items on one day become `=5.3+10.2`, one description per line
 - Back up everything, receipt photos included, to one file, and restore it later

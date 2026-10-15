@@ -85,6 +85,7 @@ h1 { margin: 0; font-size: 34px; line-height: 1.1; font-weight: 700; letter-spac
 }
 .icon-btn:active { background: var(--fill); }
 .icon-btn:disabled { color: var(--ink-2); opacity: 0.4; }
+.top-actions { display: flex; gap: 4px; margin-right: -10px; }
 
 .month-nav { display: flex; align-items: center; justify-content: space-between; margin: 4px -10px 0; }
 .month-label { font-weight: 600; padding: 10px 16px; border-radius: 10px; }
@@ -142,14 +143,16 @@ main { padding: 0 16px; }
 .section-title { margin: 0 4px 8px; font-size: 13px; font-weight: 600; color: var(--ink-2); text-transform: uppercase; letter-spacing: 0.02em; }
 .summary-card { background: var(--card); border-radius: var(--radius); padding: 6px 14px; margin-bottom: 24px; }
 
-.cat-row { padding: 10px 0; }
+.cat-row { display: block; width: 100%; text-align: left; padding: 10px 0; }
+.cat-row:active { background: var(--fill); }
+.chev { width: 14px; height: 14px; color: var(--ink-2); flex: none; margin-left: -4px; }
 .cat-row + .cat-row { border-top: 0.5px solid var(--sep); }
 .cat-line { display: flex; align-items: center; gap: 10px; }
 .cat-name { flex: 1; font-weight: 500; }
 .cat-pct { color: var(--ink-2); font-size: 14px; font-variant-numeric: tabular-nums; min-width: 40px; text-align: right; }
 .cat-amount { font-weight: 600; font-variant-numeric: tabular-nums; min-width: 84px; text-align: right; }
-.bar-track { margin: 8px 0 0 34px; height: 6px; }
-.bar { height: 6px; border-radius: 0 4px 4px 0; background: var(--accent-bar); min-width: 2px; }
+.bar-track { display: block; margin: 8px 18px 0 34px; height: 6px; }
+.bar { display: block; height: 6px; border-radius: 0 4px 4px 0; background: var(--accent-bar); min-width: 2px; }
 
 .dash-card { background: var(--card); border-radius: var(--radius); padding: 14px 14px 10px; margin-bottom: 24px; }
 .dash-head { display: flex; justify-content: space-between; align-items: baseline; font-weight: 600; }
@@ -169,6 +172,14 @@ main { padding: 0 16px; }
 .seg { display: inline-flex; background: var(--fill); border-radius: 9px; padding: 2px; }
 .seg button { padding: 5px 14px; border-radius: 7px; font-size: 14px; font-weight: 500; color: var(--ink-2); }
 .seg button[aria-pressed="true"] { background: var(--card); color: var(--ink); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12); }
+.place-row { display: flex; align-items: center; gap: 10px; padding: 11px 0; }
+.place-row + .place-row { border-top: 0.5px solid var(--sep); }
+.place-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.place-count { color: var(--ink-2); font-size: 14px; font-variant-numeric: tabular-nums; }
+.place-amount { font-weight: 600; font-variant-numeric: tabular-nums; min-width: 84px; text-align: right; }
+.received { color: var(--accent); }
+.sign-seg { display: flex; width: fit-content; margin: 10px auto 0; }
+.amount-wrap.received .currency, .amount-wrap.received #amount { color: var(--accent); }
 .dash-empty { color: var(--ink-2); text-align: center; margin: 14px 0; }
 
 /* ---------- Tab bar ---------- */
@@ -199,7 +210,7 @@ main { padding: 0 16px; }
 dialog { color: var(--ink); }
 dialog::backdrop { background: var(--backdrop); }
 
-#sheet {
+.page-sheet {
   position: fixed;
   top: calc(env(safe-area-inset-top) + 12px); bottom: 0; left: 0; right: 0;
   width: 100%; max-width: 640px; height: auto; max-height: none;
@@ -208,7 +219,7 @@ dialog::backdrop { background: var(--backdrop); }
   background: var(--bg);
   overflow: hidden;
 }
-#sheet[open] { display: flex; flex-direction: column; animation: slide-up 0.32s cubic-bezier(0.2, 0.8, 0.2, 1); }
+.page-sheet[open] { display: flex; flex-direction: column; animation: slide-up 0.32s cubic-bezier(0.2, 0.8, 0.2, 1); }
 #sheet form { display: flex; flex-direction: column; height: 100%; }
 
 @keyframes slide-up { from { transform: translateY(100%); } to { transform: none; } }
@@ -221,6 +232,7 @@ dialog::backdrop { background: var(--backdrop); }
 .sheet-head h2 { margin: 0; font-size: 17px; font-weight: 600; }
 .sheet-head .text-btn:first-child { justify-self: start; }
 .sheet-head .text-btn:last-child { justify-self: end; }
+.sheet-head h2 { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .text-btn { color: var(--accent); padding: 10px 10px; border-radius: 8px; }
 .text-btn.strong { font-weight: 600; }
